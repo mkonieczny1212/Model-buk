@@ -6,42 +6,50 @@ tags: [architecture, model, state-context]
 
 ## Najważniejszy podział
 
-$$\boxed{TEAM\ STATE}+\boxed{MATCH\ CONTEXT}\rightarrow\text{rozkłady zdarzeń}$$
+$$\boxed{TEAM\ STATE_H}+\boxed{TEAM\ STATE_A}+\boxed{MATCH\ CONTEXT}+\boxed{INTERACTIONS}\rightarrow\text{rozkłady zdarzeń}$$
 
 ### TEAM STATE
 
-Latentne, zmienne w czasie komponenty:
+Latentne, zmienne w czasie komponenty dla obu zespołów:
 
 - attack strength;
 - defence strength;
 - possession/progression;
 - pressing i press resistance;
-- set-piece strength;
+- shot/SOT creation i suppression;
+- set-piece i corner strength;
+- discipline/card profile;
 - goalkeeper/finishing form;
 - siła i głębokość kadry.
 
 ### MATCH CONTEXT
 
-- home advantage i stadion;
+- home advantage i konkretny stadion;
 - konkretna XI, absencje oraz jakość zmienników;
 - fatigue, odpoczynek, podróż;
 - pogoda i murawa;
 - sędzia;
 - stawka, rozgrywki i zasady;
-- tactical matchup i interakcje.
+- tactical matchup.
+
+### INTERACTIONS
+
+Nie zakładamy, że czynniki działają niezależnie. Testujemy m.in. `Team×Venue`, `Team×Opponent`, `Team×Referee`, `Referee×Aggressiveness`, `Weather×PlayingStyle`, `Fatigue×Pressing`, `MissingPlayer×OpponentThreat`, `HomeAdvantage×Team` oraz interakcje trójstronne, jeżeli próbka pozwala. Szczegóły: [[17 - Interakcje i wzorce powtarzalne]].
 
 ## Warstwy systemu
 
 1. Ingestion i wersjonowanie surowych danych.
-2. Point-in-time feature store według [[11 - Czas predykcji i leakage]].
-3. Estymacja dynamicznego stanu drużyn.
-4. Modele goli i innych statystyk.
-5. Pełna macierz rozkładu wyników.
-6. Agregacja do rynków 1X2, O/U, BTTS i exact score.
-7. Benchmark rynkowy po zdjęciu marży.
-8. Kalibracja i szacowanie niepewności.
-9. Moduł decyzji: edge, EV, ograniczenia ryzyka, BET/NO BET.
-10. Backtest i monitoring driftu.
+2. Canonical entity layer dla meczów, drużyn, graczy, stadionów, sędziów i providerów.
+3. Point-in-time feature store według [[11 - Czas predykcji i leakage]].
+4. Estymacja dynamicznego stanu obu drużyn.
+5. Interaction engine budujący cechy warunkowe konkretnego meczu.
+6. Modele goli i osobne modele innych zdarzeń (SOT, corners, cards itd.).
+7. Pattern miner wykrywający stabilne progi i zdarzenia o wysokiej częstości.
+8. Agregacja do rynków docelowych: 1X2, O/U, BTTS oraz zatwierdzonych rynków zdarzeń.
+9. Benchmark rynkowy po zdjęciu marży.
+10. Kalibracja i szacowanie niepewności.
+11. Moduł decyzji: edge, EV, jakość danych, ograniczenia ryzyka, BET/NO BET.
+12. Backtest, paper trading i monitoring driftu.
 
 ## Trzy rodziny modelu
 
@@ -53,5 +61,4 @@ Nie podajemy kursów do bazowego `PURE`, aby model nie nauczył się jedynie kop
 
 ## Docelowe wyniki
 
-Każda predykcja powinna zawierać $\lambda_H$, $\lambda_A$, macierz wyników, prawdopodobieństwa rynków, przedziały/miary niepewności, moment wygenerowania oraz wersję modelu i danych.
-
+Każda predykcja powinna zawierać: prawdopodobieństwa zatwierdzonych rynków, fair odds, edge względem rynku, miarę niepewności, jakość/kompletność danych, najważniejsze czynniki i interakcje, moment wygenerowania oraz wersję modelu i danych. Dla modeli goli przechowujemy również $\lambda_H$ i $\lambda_A$ jako diagnostykę. Exact score nie jest rekomendowanym rynkiem.

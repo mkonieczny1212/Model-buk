@@ -10,15 +10,22 @@ Premier League jako kontrolowane środowisko pierwszego modelu. W rozmowie wykon
 
 ## Etapy
 
-1. Pobrać i zachować surowe snapshoty z metadanymi źródła.
-2. Ujednolicić nazwy/ID drużyn, daty, strefy czasowe i identyfikatory meczów.
-3. Zbudować `MATCHES` jako tabelę centralną i oddzielne tabele encji.
-4. Wykonać testy zakresów, duplikatów, braków i spójności wyniku.
-5. Oznaczyć zmiany dostawcy, definicji i ery przepisów.
-6. Zbudować point-in-time snapshots dla T−24h, T−3h i T−60min.
-7. Obliczać cechy wyłącznie z wcześniejszych zdarzeń.
-8. Zachować kursy opening/current/closing osobno; closing nie może wejść do modelu wcześniejszego horyzontu.
-9. Rozszerzać stack kolejno o xG/event data, lineups, absencje, pogodę, venue i sędziów.
+1. Pobrać i zachować surowe dane historyczne z metadanymi źródła.
+2. Od pierwszego uruchomienia kolektora archiwizować własne snapshoty danych bieżących.
+3. Ujednolicić nazwy/ID drużyn, graczy, sędziów, stadionów, daty i strefy czasowe.
+4. Zbudować `MATCHES` jako tabelę centralną i oddzielne tabele encji.
+5. Wykonać testy zakresów, duplikatów, braków i spójności wyniku/statystyk.
+6. Oznaczyć zmiany dostawcy, definicji i ery przepisów.
+7. Zbudować point-in-time snapshots dla T−72h/T−24h, T−6h/T−3h i T−60min.
+8. Obliczać cechy wyłącznie z wcześniejszych zdarzeń.
+9. Zachować kursy opening/current/closing osobno; closing nie może wejść do modelu wcześniejszego horyzontu.
+10. Rozszerzać stack kolejno o xG/event data, lineups, absencje, pogodę, venue i sędziów.
+11. Budować historyczne profile zdarzeń dla SOT, shots, corners, cards i team totals, jeśli coverage jest stabilne.
+12. Generować interakcje wyłącznie z informacji dostępnych w danym cutoffie.
+
+## Wzorce i interakcje
+
+Dane historyczne muszą pozwalać ocenić zarówno efekty główne, jak i warunkowe: `team×venue`, `team×opponent`, `team×referee`, `weather×style`, `fatigue×pressing` itd. Dla częstych progów zdarzeń przechowujemy wyniki per sezon, home/away, opponent strength i dostępny kurs, aby odróżnić prawdziwą stabilność od przypadkowej serii.
 
 ## Podział czasowy
 
@@ -27,4 +34,3 @@ Walk-forward/rolling origin, np. trening na przeszłości i test na kolejnym okr
 ## Data contracts
 
 Każda kolumna ma: definicję, jednostkę, źródło, `event_time`, `known_at`, wersję definicji i politykę braków. Szczegóły: [[13 - Schemat danych]], [[11 - Czas predykcji i leakage]].
-

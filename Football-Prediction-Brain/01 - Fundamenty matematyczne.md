@@ -12,7 +12,10 @@ $$X\sim Poisson(\lambda_H),\qquad Y\sim Poisson(\lambda_A)$$
 
 $$P(X=k)=e^{-\lambda_H}\frac{\lambda_H^k}{k!}$$
 
-Z iloczynu prawdopodobieństw budujemy macierz dokładnych wyników. Sumowanie odpowiednich komórek daje 1X2, Over/Under, BTTS, handicapy i team totals.
+Z iloczynu prawdopodobieństw można zbudować wewnętrzny rozkład goli. Sumowanie odpowiednich stanów daje 1X2, Over/Under, BTTS, handicapy i team totals.
+
+> [!note] Exact score
+> Nie traktujemy dokładnego wyniku jako rynku docelowego ani rekomendacji bettingowej. Rozkład wyników może być liczony wyłącznie jako techniczny artefakt pomocniczy dla innych rynków.
 
 ## Siły ataku i obrony (Maher)
 
@@ -37,6 +40,7 @@ Parametr $\xi$ i half-life należy wyznaczyć poza próbą, nie intuicyjnie.
 - hierarchiczny Bayes — partial pooling i niepewność parametrów przy małej próbie;
 - dynamic state-space — siła zespołu ewoluuje w czasie;
 - Elo + Poisson — rating jako dodatkowa dynamiczna informacja;
+- modele zdarzeń binarnych/licznikowych — osobno dla SOT, corners, cards i innych rynków;
 - ML/ensemble — dopiero po zbudowaniu mocnych benchmarków statystycznych.
 
 ## Zasady estymacji
@@ -45,5 +49,5 @@ Parametr $\xi$ i half-life należy wyznaczyć poza próbą, nie intuicyjnie.
 - regularizacja i shrinkage przy małej próbie;
 - brak losowego podziału danych czasowych;
 - raportowanie rozkładu i niepewności, a nie tylko wartości punktowej;
+- każda interakcja musi być testowana poza próbą i mieć minimalną liczebność;
 - każdy bardziej złożony model porównujemy z poprzednim według [[12 - Ewaluacja i backtesting]].
-

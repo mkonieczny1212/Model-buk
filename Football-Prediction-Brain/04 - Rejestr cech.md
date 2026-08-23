@@ -12,6 +12,7 @@ To katalog kandydatów, a nie lista cech, które automatycznie trafią do jedneg
 - home/away i home advantage;
 - jakość przeciwników / strength of schedule;
 - wynik, gole, strzały, strzały celne;
+- rożne, faule i kartki tam, gdzie definicje są stabilne;
 - czas i sezon;
 - dni odpoczynku;
 - historyczne kursy dla benchmarku;
@@ -28,7 +29,7 @@ To katalog kandydatów, a nie lista cech, które automatycznie trafią do jedneg
 
 ## Forma i regresja do średniej
 
-Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue i siłę rywala. Kandydaci: xG difference, shot difference, finishing, goalkeeper form, set pieces. Sygnały „luck”: goals−xG, conceded−xGA, conversion, save percentage, karne, samobóje, słupki i czerwone kartki.
+Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue i siłę rywala. Kandydaci: xG difference, shot difference, SOT difference, corners difference, finishing, goalkeeper form, set pieces. Sygnały „luck”: goals−xG, conceded−xGA, conversion, save percentage, karne, samobóje, słupki i czerwone kartki.
 
 ## Kadra, gracze i trener
 
@@ -58,7 +59,7 @@ Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue 
 - kartki, faule i karne na mecz;
 - foul→card conversion, added time, home/away bias;
 - doświadczenie, sezon i VAR;
-- ostrożnie z referee×team przy małej próbie.
+- `Referee×Team` i `Referee×TeamAggressiveness` wyłącznie ze shrinkage i minimalną próbą.
 
 ## Taktyka i matchup
 
@@ -78,9 +79,31 @@ Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue 
 - opening/current/closing odds, overround i ruch kursów;
 - sygnały medialne i psychologiczne wyłącznie jako obiektywnie mierzone eksperymenty.
 
-## Przykładowe interakcje
+## Interakcje — obowiązkowa warstwa badawcza
 
-`Weather×PlayingStyle`, `Wind×Crossing`, `MissingCB×AerialThreat`, `Fatigue×PressingIntensity`, `Heat×Fatigue`, `RefereeStrictness×AggressiveTeam`, `PitchSize×HighPress`, `LineupWeakness×OpponentStrength`.
+Każdy ważny czynnik rozważamy zarówno samodzielnie, jak i warunkowo. Kandydaci:
+
+`Team×Venue`, `Team×Opponent`, `OpponentStyle×TeamStyle`, `Weather×PlayingStyle`, `Wind×Crossing`, `MissingCB×AerialThreat`, `Fatigue×PressingIntensity`, `Heat×Fatigue`, `RefereeStrictness×AggressiveTeam`, `Referee×Team`, `PitchSize×HighPress`, `LineupWeakness×OpponentStrength`, `HomeAway×Team`, `RestDays×SquadDepth`.
+
+Head-to-head nie jest automatycznie sygnałem. Może zostać użyte tylko wtedy, gdy efekt utrzymuje się po korekcie składu, trenera, siły drużyn, czasu i ma wystarczającą próbę.
+
+## Wzorce powtarzalne i progi
+
+Szukamy zdarzeń, które występują bardzo często i mogą odpowiadać rynkom bukmacherskim, np. `team_SOT>=3`, `team_corners>=3`, `team_cards>=1`, `team_goals>=1`. Nie wystarczy sama wysoka historyczna częstość.
+
+Każdy wzorzec opisujemy przez:
+
+- base rate i conditional rate;
+- próbę `n` oraz effective sample size po decay;
+- dolny przedział ufności / posterior lower bound;
+- stabilność między sezonami;
+- home/away split;
+- korektę na siłę i styl przeciwnika;
+- trend i recency;
+- dostępny kurs, vig, edge i CLV;
+- wynik OOS i paper trading.
+
+Szczegóły: [[17 - Interakcje i wzorce powtarzalne]].
 
 ## Schemat rekordu registry
 
@@ -94,10 +117,11 @@ known_at:
 prediction_horizon:
 hypothesised_effect:
 interactions: []
+minimum_sample:
+shrinkage_policy:
 missingness_policy:
 data_quality:
 model_version_added:
 oos_effect:
 decision: candidate
 ```
-
