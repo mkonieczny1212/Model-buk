@@ -9,11 +9,11 @@ To katalog kandydatów, a nie lista cech, które automatycznie trafią do jedneg
 ## Must-have
 
 - dynamiczna siła ataku i obrony;
-- home/away i home advantage;
+- home/away i team-specific home advantage;
 - jakość przeciwników / strength of schedule;
 - wynik, gole, strzały, strzały celne;
 - rożne, faule i kartki tam, gdzie definicje są stabilne;
-- czas i sezon;
+- czas, sezon i liga;
 - dni odpoczynku;
 - historyczne kursy dla benchmarku;
 - identyfikator źródła oraz timestamp.
@@ -29,7 +29,7 @@ To katalog kandydatów, a nie lista cech, które automatycznie trafią do jedneg
 
 ## Forma i regresja do średniej
 
-Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue i siłę rywala. Kandydaci: xG difference, shot difference, SOT difference, corners difference, finishing, goalkeeper form, set pieces. Sygnały „luck”: goals−xG, conceded−xGA, conversion, save percentage, karne, samobóje, słupki i czerwone kartki.
+Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue i siłę rywala. Kandydaci: xG difference, shot/SOT difference, corners difference, finishing, goalkeeper form, set pieces. Sygnały „luck”: goals−xG, conceded−xGA, conversion, save percentage, karne, samobóje, słupki i czerwone kartki.
 
 ## Kadra, gracze i trener
 
@@ -46,13 +46,18 @@ Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue 
 - dystans i sposób podróży, strefy czasowe, puchary, aklimatyzacja;
 - zawodnicy wracający z reprezentacji.
 
-## Środowisko
+## Środowisko — niski priorytet bazowy, wysoki przy ekstremach
 
-- temperatura, wilgotność, wet-bulb, opady, śnieg;
-- wiatr, porywy, ciśnienie i zachmurzenie;
-- murawa, stan i wymiary boiska, dach, drenaż;
-- wysokość n.p.m., neutral venue;
-- attendance, zapełnienie i brak publiczności.
+Nie używamy normalnych różnic pogodowych jako dominującego sygnału. Priorytet mają cechy typu `EnvironmentalShock`:
+
+- skrajna temperatura lub wilgotność;
+- bardzo silny wiatr/opady/śnieg;
+- wysoka wysokość n.p.m.;
+- nietypowa murawa/sztuczna nawierzchnia;
+- duża różnica klimatu pomiędzy miejscem pochodzenia zespołu a venue;
+- daleka podróż połączona z ekstremalnym środowiskiem.
+
+Kandydaci: `TemperatureShock`, `PrecipitationShock`, `WindShock`, `AltitudeShock`, `ClimateDifference`, `TravelClimateDifference`. Normalna brytyjska pogoda bez wyraźnego odchylenia powinna mieć niski priorytet.
 
 ## Sędzia i dyscyplina
 
@@ -83,7 +88,7 @@ Okna 1/3/5/8/10 meczów oraz wykładniczy decay. Forma powinna korygować venue 
 
 Każdy ważny czynnik rozważamy zarówno samodzielnie, jak i warunkowo. Kandydaci:
 
-`Team×Venue`, `Team×Opponent`, `OpponentStyle×TeamStyle`, `Weather×PlayingStyle`, `Wind×Crossing`, `MissingCB×AerialThreat`, `Fatigue×PressingIntensity`, `Heat×Fatigue`, `RefereeStrictness×AggressiveTeam`, `Referee×Team`, `PitchSize×HighPress`, `LineupWeakness×OpponentStrength`, `HomeAway×Team`, `RestDays×SquadDepth`.
+`Team×Venue`, `Team×Opponent`, `OpponentStyle×TeamStyle`, `WeatherShock×PlayingStyle`, `WindShock×Crossing`, `MissingCB×AerialThreat`, `Fatigue×PressingIntensity`, `HeatShock×Fatigue`, `RefereeStrictness×AggressiveTeam`, `Referee×Team`, `PitchSize×HighPress`, `LineupWeakness×OpponentStrength`, `HomeAway×Team`, `RestDays×SquadDepth`.
 
 Head-to-head nie jest automatycznie sygnałem. Może zostać użyte tylko wtedy, gdy efekt utrzymuje się po korekcie składu, trenera, siły drużyn, czasu i ma wystarczającą próbę.
 
@@ -91,17 +96,7 @@ Head-to-head nie jest automatycznie sygnałem. Może zostać użyte tylko wtedy,
 
 Szukamy zdarzeń, które występują bardzo często i mogą odpowiadać rynkom bukmacherskim, np. `team_SOT>=3`, `team_corners>=3`, `team_cards>=1`, `team_goals>=1`. Nie wystarczy sama wysoka historyczna częstość.
 
-Każdy wzorzec opisujemy przez:
-
-- base rate i conditional rate;
-- próbę `n` oraz effective sample size po decay;
-- dolny przedział ufności / posterior lower bound;
-- stabilność między sezonami;
-- home/away split;
-- korektę na siłę i styl przeciwnika;
-- trend i recency;
-- dostępny kurs, vig, edge i CLV;
-- wynik OOS i paper trading.
+Każdy wzorzec opisujemy przez base rate, conditional rate, próbę, effective sample size, lower bound, stabilność sezonową, home/away, opponent adjustment, recency, dostępny kurs, vig, edge, CLV i wynik OOS.
 
 Szczegóły: [[17 - Interakcje i wzorce powtarzalne]].
 
@@ -121,6 +116,7 @@ minimum_sample:
 shrinkage_policy:
 missingness_policy:
 data_quality:
+retrieval_cost_class: free|cached|cheap|expensive
 model_version_added:
 oos_effect:
 decision: candidate

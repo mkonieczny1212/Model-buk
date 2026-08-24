@@ -4,18 +4,27 @@ tags: [next-actions, roadmap]
 
 # Następne kroki
 
-## Najbliższy milestone: Football Model v0.1
+## Najbliższy milestone
 
-- [x] Zamrozić pierwszy zakres: Premier League, 1X2, O/U 2.5, BTTS; exact score odrzucony jako rynek docelowy.
-- [ ] Wykonać Data Audit v1 według [[16 - Rejestr źródeł danych]].
-- [ ] Pozyskać i zwalidować historyczne mecze, statystyki oraz kursy.
-- [ ] Uruchomić archiwizację bieżących snapshotów odds/injuries/lineups/weather.
-- [ ] Zaimplementować league-average Poisson.
-- [ ] Dodać parametry attack/defence i home advantage.
-- [ ] Wyprowadzić prawdopodobieństwa 1X2, O/U 2.5 i BTTS.
-- [ ] Zbudować chronologiczny walk-forward backtest.
-- [ ] Raportować log loss, Brier/RPS, kalibrację i benchmark rynku.
-- [ ] Dodać Dixon–Coles i time decay jako pierwszy eksperyment inkrementalny.
+- [x] Zamrozić pierwsze rynki badawcze: 1X2, O/U 2.5, BTTS; exact score wyłączony jako rynek docelowy.
+- [x] Ustalić, że Premier League jest poligonem, a nie ograniczeniem docelowym.
+- [x] Wprowadzić zasadę cost-aware scanning i lejka danych.
+- [ ] Zbudować Global Data Coverage Matrix dla ok. 20–30 lig + europejskich pucharów.
+- [ ] Nadać każdej parze `league×market` Data/Market Quality Score.
+- [ ] Zmierzyć koszt pobierania danych na ligę, dzień i shortlistę.
+- [ ] Wybrać pierwszy realny `budget cap` na dzień/tydzień.
+- [ ] Zbudować Minimum Viable Dataset oraz canonical IDs.
+- [ ] Uruchomić tani kolektor fixtures/basic odds oraz archiwizację snapshotów.
+- [ ] Zbudować v0.1 i walk-forward backtest.
+
+## Cost-aware pipeline
+
+- [ ] Tier 0: cache/history + fixture universe + statyczne profile lig/drużyn.
+- [ ] Tier 1: tani screening wszystkich kandydatów.
+- [ ] Tier 2: shortlist na podstawie quality/edge potential.
+- [ ] Tier 3: płatne/świeże odds, lineup, injuries i szczegóły tylko dla shortlisty.
+- [ ] Tier 4: pełny model + risk filter dla finalnych kandydatów.
+- [ ] Logować `data_cost`, `compute_cost`, `api_credits_used` per run i per bet.
 
 ## Równoległy fundament danych
 
@@ -25,21 +34,20 @@ tags: [next-actions, roadmap]
 - [ ] Utrzymywać Source Registry według [[16 - Rejestr źródeł danych]].
 - [ ] Zmapować licencje, koszty i zakres każdego źródła.
 - [ ] Oznaczyć structural breaks i zmiany providerów.
-- [ ] Zbudować canonical IDs i mapowania providerów.
+- [ ] Zbudować canonical IDs i reconciliation między providerami.
 
 ## Równoległy tor: zdarzenia powtarzalne
 
 - [ ] Zweryfikować historyczne coverage shots/SOT/corners/cards.
-- [ ] Zbudować proste profile częstości progów per team, venue, opponent strength i sezon.
-- [ ] Dodać shrinkage, przedziały ufności i minimalną próbę.
+- [ ] Zbudować profile progów per team/venue/opponent strength/sezon.
+- [ ] Dodać shrinkage, lower bounds i minimalną próbę.
 - [ ] Przetestować interakcje z [[17 - Interakcje i wzorce powtarzalne]].
-- [ ] Nie traktować serii/H2H jako sygnału bez testu OOS.
-- [ ] Dopiero po kalibracji połączyć prawdopodobieństwa z realnymi kursami.
+- [ ] Do deep-data kierować wyłącznie wzorce, które przeszły tani screening.
 
-## Definition of done v0.1
+## Definition of done pierwszego pipeline'u
 
-Reprodukowalny pipeline od surowych danych do predykcji, brak znanego leakage, raport walk-forward z benchmarkami, wersjonowanie artefaktów oraz przykładowy output zawierający $\lambda_H$, $\lambda_A$, 1X2, O/U 2.5, BTTS, fair odds, jakość danych i decyzję `BET/NO BET`.
+Reprodukowalny system, który może obserwować wiele lig, odrzucać słabe dane, liczyć tanie cechy lokalnie, pobierać drogie dane dopiero dla shortlisty, raportować prawdopodobieństwo/fair odds/edge oraz pełny koszt wygenerowania decyzji `BET/NO BET/NO PREDICTION`.
 
 ## Czego jeszcze nie robić
 
-Nie budować strony produktowej ani dużego modelu ML przed solidnym benchmarkiem. Nie dodawać wszystkich cech naraz. Nie optymalizować wyłącznie ROI ani accuracy. Nie wybierać progów/rynków dlatego, że wyglądają dobrze na całej historii — decyzje muszą przeżyć holdout i paper trading.
+Nie kupować wielu feedów równolegle bez testu wartości. Nie odpytujemy kosztownych endpointów dla wszystkich spotkań. Nie optymalizujemy liczby zakładów — optymalizujemy wartość netto po kosztach i ryzyku.

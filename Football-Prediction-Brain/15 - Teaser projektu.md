@@ -7,37 +7,40 @@ status: active
 
 ## Co budujemy
 
-Model Buk ma być systemem, który przed meczem zbiera dostępne w danym momencie dane, ocenia oba zespoły i konkretny kontekst spotkania, wylicza skalibrowane prawdopodobieństwa rynków, porównuje je z kursem bukmachera i kończy decyzją `BET/NO BET`.
+Model Buk ma być **globalnym systemem wyszukiwania value w piłce nożnej**, a nie typsterem jednej ligi. System zbiera tylko dane potrzebne na danym etapie, ocenia jakość meczu/rynku, wylicza skalibrowane prawdopodobieństwa, porównuje je z ceną i kończy decyzją `BET`, `NO BET` albo `NO PREDICTION`.
 
-Nie chcemy „zgadywać wyniku”. Chcemy znaleźć sytuacje, w których nasza wycena prawdopodobieństwa jest trwale lepsza od ceny rynkowej.
+Nie chcemy zgadywać każdego meczu. Chcemy znaleźć niewielką liczbę sytuacji, w których przewaga jest wystarczająco duża **po uwzględnieniu kosztu danych, marży, niepewności i ryzyka**.
 
 ## Co już wiemy
 
-- Startujemy od Premier League.
-- Pierwsze rynki: **1X2, Over/Under 2.5 i BTTS**.
-- **Exact score odrzucamy jako rynek docelowy**; rozkład goli może pozostać wyłącznie technicznym narzędziem modelu.
-- Pierwszy benchmark: Poisson → attack/defence + home advantage → Dixon–Coles → modele dynamiczne.
-- Budujemy osobne predykcje EARLY, PRE-MATCH i LINEUP.
-- Każda informacja musi być point-in-time: model nie może wiedzieć niczego, co pojawiło się po cutoffie.
-- Rynek jest benchmarkiem, nie odpowiedzią: oddzielamy `PURE`, `MARKET` i docelowo `HYBRID`.
-- Każda nowa cecha, interakcja i strategia musi przeżyć chronologiczny holdout.
+- Premier League służy do walidacji procesu, ale docelowo system nie ogranicza się do ligi.
+- Startowe rynki: 1X2, O/U 2.5, BTTS; exact score odpada jako rynek docelowy.
+- Zdarzenia powtarzalne (SOT, corners, cards itd.) są osobnym ważnym torem badawczym.
+- Każda informacja musi być point-in-time.
+- `PURE`, `MARKET` i docelowo `HYBRID` pozostają oddzielone.
+- Każda cecha, liga, rynek i interakcja musi przeżyć chronologiczny holdout.
+- Pogoda nie jest głównym filarem; liczą się przede wszystkim ekstremalne warunki i interakcje.
+- Największym ryzykiem projektu są dane i prawdziwy edge, nie koszt obliczeń.
 
-## Drugi ważny tor
+## Kluczowa ekonomika
 
-Oprócz goli i wyniku będziemy wyszukiwać **stabilne, częste zdarzenia**, np. progi strzałów celnych, rożnych czy kartek. Interesuje nas nie tylko średnia drużyny, ale warunki konkretnego meczu: stadion, przeciwnik, sędzia, pogoda, skład, zmęczenie i ich wzajemne interakcje.
+Nie wykonujemy 9000 drogich analiz tylko dlatego, że istnieje 9000 potencjalnych zakładów. Stosujemy **cost-aware funnel**:
 
-Przykład hipotezy: drużyna bardzo często osiąga `SOT>=3`, ale model sprawdza, czy efekt nadal istnieje na wyjeździe, przeciw mocnym rywalom, przy konkretnym stylu przeciwnika i po uwzględnieniu ceny rynku.
+1. cache/history + tani universe;
+2. lokalny screening wielu meczów/rynków;
+3. shortlist;
+4. świeże/płatne dane tylko dla shortlisty;
+5. pełny model i risk filter;
+6. actionable bets tylko wtedy, gdy oczekiwany zysk uzasadnia również koszt skanu.
 
 ## Co jest teraz najważniejsze
 
-1. **Data Audit v1** — jakość, dostępność, historia, point-in-time i cena źródeł.
-2. Uruchomienie własnego archiwum aktualnych odds, injuries, lineups i weather snapshots.
-3. Zbudowanie v0.1 oraz walk-forward backtestu.
-4. Zbudowanie rejestru interakcji i pattern minera dla powtarzalnych zdarzeń.
-5. Dopiero później: polityka stawek, bankroll, limity ryzyka i realne paper trading.
+1. [[19 - Globalny zakres lig i quality gate]] — coverage 20–30 lig i pucharów.
+2. [[18 - Ekonomika pipeline i cost-aware scanning]] — koszt per run/league/candidate.
+3. [[16 - Rejestr źródeł danych]] — aktualny provider stack i fallbacki.
+4. Minimum Viable Dataset i własne snapshoty.
+5. v0.1 + walk-forward + paper trading.
 
 ## Docelowy outcome
 
-Dla każdego meczu chcemy otrzymać: aktualność i jakość danych → prawdopodobieństwa → fair odds → kurs rynkowy → edge/EV → confidence → najważniejsze czynniki i interakcje → rekomendowaną ekspozycję albo `NO BET`.
-
-**Największym ryzykiem projektu nie jest koszt obliczeń. Jest nim jakość i dostępność danych oraz udowodnienie, że znaleziony edge działa także na nowych meczach.**
+Dla każdego meczu/rynku: `data quality → model P → fair odds → market price → edge/EV → uncertainty → data cost → risk → BET/NO BET/NO PREDICTION`.

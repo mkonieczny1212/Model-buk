@@ -7,29 +7,41 @@ status: active
 
 ## Cel
 
-Zbudować oparty na matematyce, statystyce i danych silnik, który estymuje prawdopodobieństwa zdarzeń meczowych, porównuje je z oczekiwaniami rynku i podejmuje decyzję `BET/NO BET` z kontrolą ryzyka. Pierwszy zakres: Premier League oraz rynki 1X2, Over/Under 2.5 i BTTS.
+Zbudować oparty na matematyce, statystyce i danych **globalny silnik wyszukiwania value w piłce nożnej**. System nie ma być ograniczony do jednej ligi ani jednego rynku. Premier League pozostaje pierwszym poligonem walidacyjnym, ale architektura od początku ma obsługiwać wiele lig i wybierać mecze/rynki według jakości danych, przewidywalności, ceny i oczekiwanej wartości netto.
 
-**Exact score nie jest rynkiem docelowym.** Rozkład goli może pozostać wewnętrznym narzędziem matematycznym do agregacji 1X2/O-U/BTTS, ale nie budujemy rekomendacji na dokładny wynik.
+Pierwszy zakres modelowania: 1X2, Over/Under 2.5 i BTTS. **Exact score nie jest rynkiem docelowym.** Rozkład goli może pozostać wewnętrznym narzędziem matematycznym do agregacji innych rynków.
 
-Równolegle badamy rynki zdarzeń o wysokiej powtarzalności, np. team shots, shots on target, corners, cards i team totals — dopiero po potwierdzeniu jakości danych i przewagi poza próbą.
+Równolegle badamy rynki zdarzeń o wysokiej powtarzalności, m.in. shots, shots on target, corners, cards, team totals i wybrane player props — wyłącznie tam, gdzie dane i kursy są wystarczająco dobre.
 
 ## Przepływ wiedzy
 
-`Dane historyczne + aktualne snapshoty → stan obu drużyn → kontekst meczu → interakcje → rozkłady zdarzeń → prawdopodobieństwa rynków → fair odds → edge/EV → ryzyko/stawka → BET lub NO BET`
+`Globalny universe meczów → Data Quality Gate → tani screening → stan obu drużyn → kontekst → interakcje → modele zdarzeń → market scanner → cost/risk filter → BET / NO BET / NO PREDICTION`
+
+## Główne zasady
+
+- nie skanujemy wszystkiego drogimi źródłami;
+- koszt danych i predykcji jest częścią decyzji ekonomicznej;
+- najpierw używamy danych cache/historycznych i tanich endpointów, a dopiero później płatnych szczegółów dla shortlisty;
+- wszystkie informacje są point-in-time;
+- każda cecha i interakcja musi przeżyć test OOS;
+- `NO BET` i `NO PREDICTION` są pełnoprawnymi wynikami;
+- pogoda jest przede wszystkim cechą wyjątków/extreme-environment, a nie stałym filarem każdego meczu.
 
 ## Rdzeń
 
-- [[01 - Fundamenty matematyczne]] — Poisson, Dixon–Coles, modele dynamiczne i bayesowskie.
-- [[03 - Architektura modelu]] — rozdział `STATE`, `CONTEXT`, `INTERACTIONS` i warstw systemu.
-- [[04 - Rejestr cech]] — katalog kandydatów oraz definicje cech.
-- [[17 - Interakcje i wzorce powtarzalne]] — relacje między czynnikami i wyszukiwanie stabilnych zdarzeń.
-- [[11 - Czas predykcji i leakage]] — wersje EARLY, PRE-MATCH i LINEUP.
-- [[12 - Ewaluacja i backtesting]] — test chronologiczny, kalibracja i wyniki finansowe.
+- [[01 - Fundamenty matematyczne]]
+- [[03 - Architektura modelu]]
+- [[04 - Rejestr cech]]
+- [[17 - Interakcje i wzorce powtarzalne]]
+- [[11 - Czas predykcji i leakage]]
+- [[12 - Ewaluacja i backtesting]]
 
-## Dane i rynek
+## Dane, rynek i ekonomika
 
 - [[05 - Źródła danych]]
 - [[16 - Rejestr źródeł danych]]
+- [[18 - Ekonomika pipeline i cost-aware scanning]]
+- [[19 - Globalny zakres lig i quality gate]]
 - [[07 - Plan danych historycznych]]
 - [[06 - Matematyka bukmacherska]]
 

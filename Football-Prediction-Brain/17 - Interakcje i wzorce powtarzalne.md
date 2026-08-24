@@ -7,9 +7,9 @@ status: active
 
 ## Po co ta warstwa
 
-Mecz nie jest sumą niezależnych średnich. Ten sam zespół może zachowywać się inaczej zależnie od stadionu, przeciwnika, sędziego, pogody, składu, zmęczenia i stylu gry. Dlatego model musi szukać zarówno efektów głównych, jak i **warunkowych zależności**.
+Mecz nie jest sumą niezależnych średnich. Ten sam zespół może zachowywać się inaczej zależnie od stadionu, przeciwnika, sędziego, składu, zmęczenia, stylu i wyjątkowego środowiska. Dlatego model szuka zarówno efektów głównych, jak i warunkowych zależności.
 
-Jednocześnie chcemy wykrywać zdarzenia o wysokiej powtarzalności, które mogą odpowiadać konkretnym rynkom: SOT, shots, corners, cards, team goals i inne progi dostępne u bukmacherów.
+Jednocześnie wykrywamy zdarzenia o wysokiej powtarzalności odpowiadające rynkom: SOT, shots, corners, cards, team goals i inne progi.
 
 ## Hierarchia interakcji
 
@@ -18,87 +18,52 @@ Jednocześnie chcemy wykrywać zdarzenia o wysokiej powtarzalności, które mog�
 - home/away;
 - opponent strength;
 - referee strictness;
-- weather;
 - rest/fatigue;
-- lineup strength.
+- lineup strength;
+- environment shock tylko gdy istotny.
 
 ### Poziom 2 — interakcje dwuczynnikowe
 - `Team×Venue`;
 - `Team×Opponent`;
 - `Team×Referee`;
 - `TeamStyle×OpponentStyle`;
-- `Weather×PlayingStyle`;
+- `EnvironmentalShock×PlayingStyle`;
 - `RefereeStrictness×TeamAggressiveness`;
 - `Fatigue×PressingIntensity`;
 - `LineupWeakness×OpponentStrength`.
 
 ### Poziom 3 — interakcje wieloczynnikowe
-Np. `Team×Venue×OpponentStyle` albo `Referee×Team×Market(cards)`. Używamy ich dopiero przy dużej próbie, regularizacji i wcześniejszej hipotezie. Nie generujemy tysięcy kombinacji bez kontroli.
+Np. `Team×Venue×OpponentStyle` albo `Referee×Team×Market(cards)`. Używamy ich dopiero przy dużej próbie, regularizacji i wcześniejszej hipotezie.
 
 ## Head-to-head
 
-H2H może być sygnałem tylko warunkowo. Sam fakt, że zespół „zawsze dobrze gra z X”, nie jest wystarczający. Sprawdzamy:
+H2H może być sygnałem tylko warunkowo. Sprawdzamy wiek meczów, trenerów, składy, relatywną siłę drużyn, home/away, style oraz holdout. Samo „zawsze dobrze gra z X” nie wystarcza.
 
-- jak stare są mecze;
-- czy zmienili się trenerzy i składy;
-- jaka była relatywna siła drużyn;
-- home/away;
-- styl i formation;
-- czy efekt przeżywa shrinkage i holdout.
+## Pattern miner
 
-## Pattern miner — stałe/f częste zdarzenia
+Dla każdej drużyny i rynku generujemy kandydatów typu `SOT>=x`, `shots>=x`, `corners>=x`, `cards>=x`, `team_goals>=x`. Dla każdego liczymy base/recent/home/away rates, opponent buckets, interakcje, effective sample size, lower bound, stabilność sezonową, kalibrację, implied probability, edge, EV i CLV.
 
-Dla każdej drużyny i rynku generujemy kandydatów typu:
+## Cost-aware pattern discovery
 
-- `SOT >= 2/3/4/5`;
-- `shots >= x`;
-- `corners >= 2/3/4/5`;
-- `cards >= 1/2`;
-- `team goals >= 1/2`;
-- inne progi dopiero po potwierdzeniu definicji i coverage.
+Pattern miner ma dwa etapy:
 
-### Dla każdego kandydata liczymy
+1. **offline/local discovery** na własnej historii i cache — tanie skanowanie tysięcy hipotez;
+2. **online enrichment** tylko dla shortlisty — pobranie aktualnych odds/lineup/injuries/props wtedy, gdy historyczny i kontekstowy screening daje wystarczający potencjał.
 
-1. `base_rate` — częstość bez warunków.
-2. `recent_rate` — częstość z decay.
-3. `home_rate` / `away_rate`.
-4. `vs_strength_bucket` — przeciw słabym/średnim/mocnym rywalom.
-5. `conditional_rate` dla hipotez interakcji.
-6. `n` i effective sample size.
-7. przedział ufności / posterior credible interval.
-8. lower bound prawdopodobieństwa.
-9. stabilność sezon-po-sezonie.
-10. kalibrację na holdoucie.
-11. market implied probability po vig.
-12. edge, EV i później CLV.
-
-## Przykład interpretacji
-
-Jeżeli drużyna osiąga `SOT>=3` w 92% ostatnich spotkań, nie oznacza to automatycznie zakładu. Model powinien sprawdzić, czy:
-
-- wynik nie pochodzi z małej próby;
-- nie jest efektem serii słabych przeciwników;
-- utrzymuje się home/away;
-- obecny przeciwnik nie tłumi SOT wyjątkowo dobrze;
-- skład nie zmienił profilu ataku;
-- kurs po zdjęciu marży nadal daje dodatni edge.
-
-Dopiero wtedy zdarzenie staje się kandydatem `BET`.
+Nie pobieramy wszystkich dostępnych player props i micro-markets dla każdego meczu. Najpierw model musi wykazać, że dany `league×market×team/context` ma szansę przekroczyć próg opłacalności.
 
 ## Ochrona przed overfittingiem
 
-- hipoteza przed testem, gdy to możliwe;
-- minimalna próbka per interakcja;
+- hipoteza przed testem, gdy możliwe;
+- minimalna próbka;
 - partial pooling/shrinkage;
-- decay dla starych obserwacji;
-- oddzielny chronologiczny holdout;
-- korekta multiple testing/FDR przy masowym skanowaniu;
-- nie wybieramy progu po obejrzeniu całej historii i nie testujemy go na tej samej próbce;
-- paper trading przed użyciem kapitału.
+- decay;
+- chronologiczny holdout;
+- multiple-testing/FDR przy masowym skanowaniu;
+- paper trading;
+- koszt danych uwzględniany w końcowym wyniku ekonomicznym.
 
-## Docelowy output interakcji
-
-Dla meczu system powinien zwracać nie tylko prawdopodobieństwo, ale także diagnostykę, np.:
+## Docelowy output
 
 ```text
 Market: Team A SOT >= 3
@@ -106,14 +71,12 @@ Model P: 84.1%
 Market P after vig: 76.0%
 Edge: +8.1 pp
 Data quality: 93/100
+Data cost for enrichment: 0.03 EUR-equivalent
 Sample: 41 weighted matches
 Key effects:
 - Team baseline +5.2 pp
 - Opponent SOT suppression -3.1 pp
 - Home venue +2.4 pp
 - Expected lineup +1.7 pp
-- Referee/weather: negligible
-Decision: candidate BET after risk filter
+Decision: candidate BET after cost/risk filter
 ```
-
-To jest kierunek docelowego explanation layer, a nie obietnica, że każda interakcja będzie użyteczna.
