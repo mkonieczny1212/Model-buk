@@ -9,9 +9,12 @@ tags: [next-actions, roadmap]
 - [x] Zamrozić pierwsze rynki badawcze: 1X2, O/U 2.5, BTTS; exact score wyłączony jako rynek docelowy.
 - [x] Ustalić, że Premier League jest poligonem, a nie ograniczeniem docelowym.
 - [x] Wprowadzić zasadę cost-aware scanning i lejka danych.
-- [ ] Zbudować Global Data Coverage Matrix dla ok. 20–30 lig + europejskich pucharów.
+- [x] Zbudować wstępny Global Data Coverage Matrix dla ok. 20–30 lig + europejskich pucharów.
+- [x] Uruchomić pierwszy ręczny pilot live na realnych meczach przed kodowaniem.
+- [ ] Zakończyć pilot 27.08.2026 wynikami po meczu i ocenić, które sygnały były użyteczne.
 - [ ] Nadać każdej parze `league×market` Data/Market Quality Score.
 - [ ] Zmierzyć koszt pobierania danych na ligę, dzień i shortlistę.
+- [ ] Wykonać Provider Shootout: API-Football vs TheStatsAPI (+ Sportmonks jeśli potrzebne).
 - [ ] Wybrać pierwszy realny `budget cap` na dzień/tydzień.
 - [ ] Zbudować Minimum Viable Dataset oraz canonical IDs.
 - [ ] Uruchomić tani kolektor fixtures/basic odds oraz archiwizację snapshotów.
@@ -50,4 +53,4 @@ Reprodukowalny system, który może obserwować wiele lig, odrzucać słabe dane
 
 ## Czego jeszcze nie robić
 
-Nie kupować wielu feedów równolegle bez testu wartości. Nie odpytujemy kosztownych endpointów dla wszystkich spotkań. Nie optymalizujemy liczby zakładów — optymalizujemy wartość netto po kosztach i ryzyku.
+Nie kupować wielu feedów równolegle bez testu wartości. Nie odpytujemy kosztownych endpointów dla wszystkich spotkań. Nie optymalizujemy liczby zakładów — optymalizujemy wartość netto po kosztach i ryzyku. Nie traktujemy ręcznego pilota jako dowodu przewagi — służy on do testu procesu i jakości danych.

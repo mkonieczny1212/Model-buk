@@ -7,22 +7,26 @@ status: living-document
 
 Żywy katalog źródeł. Każde źródło ma status `primary`, `candidate`, `reference`, `fallback` albo `rejected`. Ceny i limity są zmienne — przed zakupem zawsze wykonujemy ponowną weryfikację.
 
-## Macierz źródeł v2
+## Macierz źródeł v3
 
-| Źródło | Rola | Point-in-time | Koszt / limit (2026-08-24) | Status | Główne ryzyko |
+| Źródło | Rola | Point-in-time | Koszt / limit | Status | Główne ryzyko |
 |---|---|---|---|---|---|
 | Football-Data.co.uk | historia, basic stats, odds | ograniczony | free | primary-history | zmiany providerów/kolumn |
-| API-Football | szeroki live/prematch feed | własna archiwizacja | Free 100 req/d; Pro $19 7.5k/d; Ultra $29 75k/d; Mega $39 150k/d | candidate-live | retention/coverage per league |
-| The Odds API | current/historical odds | bardzo dobry | Start $30/20k credits; current odds 1 credit × market × region; historical 10× | candidate-market | koszt props/historical |
-| football-data.org | fixtures/lineups/cards + stats/odds add-ons | do audytu | Free 12 comps; €49/30; €99/50; €199/100; stats +€15; odds +€15 | candidate-reconciliation | add-ons i coverage |
+| API-Football | szeroki live/prematch feed | własna archiwizacja | Free 100 req/d; płatne plany od ok. $19 | candidate-live | retention/coverage per league |
+| TheStatsAPI | stats + xG + odds + szerokie ligi | do audytu | ok. $50/mies. plan szeroki | candidate-all-in-one | marketing coverage vs real completeness |
+| The Odds API | current/historical odds | bardzo dobry | credit-based; history droższa | candidate-market | koszt props/historical |
+| football-data.org | fixtures/lineups/cards + stats/odds add-ons | do audytu | free/paid | candidate-reconciliation | add-ons i coverage |
 | Betfair Historical Data | exchange price/market/settlement | timestamped | paid packages | candidate-exchange | koszt zakupu danych i parsing |
 | Pinnacle API | benchmark jakościowy | dobry jeśli dostęp | public API zamknięte od 2025-07-23 | restricted-reference | brak gwarantowanego dostępu |
 | StatsBomb Open Data | event research | historyczny | free | research | selektywne coverage |
-| Opta public | referencja statystyk/xG | niegwarantowany | public/reference | reference | licencja |
+| Opta public / FotMob pages | referencja statystyk/xG | public page | free/reference | reference | licencja, nie API produkcyjne |
 | Sportmonks | premium all-in-one | do audytu | paid, modular | candidate-premium | koszt/vendor lock-in |
 | Open-Meteo | extreme environment | forecast history | free/low-cost | secondary-environment | niski priorytet w normalnych warunkach |
 | OpenStreetMap | venue/geography | n/d | free | primary-venue | kompletność |
-| oficjalne ligi/kluby/Flashscore | verification | różny | public | fallback | brak stabilnego API |
+| UEFA / oficjalne ligi/kluby | fixture/result/competition truth | publikacja oficjalna | free/public | primary-verification | niepełne statystyki |
+| Oddschecker / public bookmaker pages | darmowy benchmark bieżących kursów w pilocie | snapshot strony | free/public | research-market | ręczne pozyskanie, brak gwarancji API |
+| Scores24 / PlaymakerStats / podobne public stats pages | pomocnicza walidacja xG/shots/SOT/corners | po meczu | free/public | research-validation | rozbieżności definicji/providerów |
+| Euroranking / ClubElo-like ratings | darmowy prior siły drużyn | aktualizowany okresowo | free/public | research-strength | świeżość ratingu, metodologia |
 
 ## Klasy kosztowe
 
@@ -33,10 +37,20 @@ status: living-document
 
 Każdy endpoint dostaje `cost_class`, `credits_per_call`, `batch_scope`, `refresh_interval` i `expected_information_gain`.
 
+## Lekcja z pilota 27.08.2026
+
+Darmowy research jest wystarczający, aby zbudować ręczny prototyp, ale nie jest wystarczający jako produkcyjny data layer. Wystąpiły rozbieżności xG między publicznymi źródłami dla tych samych spotkań. Dlatego:
+
+- wyniki, terminarz i aggregate state preferujemy z UEFA/oficjalnych źródeł;
+- kursy zapisujemy z timestampem i źródłem;
+- xG/statystyki muszą mieć provider + definition version;
+- przy konflikcie źródeł obniżamy `data_quality` albo zwracamy `NO PREDICTION`;
+- przed wdrożeniem płatnego feedu wykonujemy provider shootout na tych samych meczach i polach.
+
 ## Ważne obserwacje techniczne
 
-- API-Football sam rekomenduje pobieranie szczegółów dopiero wtedy, gdy są potrzebne i pozwala pobierać fixtures per liga/data oraz grupować wiele IDs; logiczny skan setek meczów nie musi oznaczać setek requestów.
-- The Odds API wycenia popularne current odds per `market×region`, a nie per mecz zwrócony przez endpoint. To umożliwia szeroki screening rynku jednym/bardzo małą liczbą requestów per liga/sport key.
+- API-Football pozwala pobierać wiele danych batchowo; logiczny skan setek meczów nie musi oznaczać setek requestów.
+- The Odds API wycenia popularne current odds per `market×region`, a nie per mecz zwrócony przez endpoint.
 - Additional/event props mogą wymagać event-specific requestów, dlatego nie wolno odpalać ich dla całego universe bez shortlisty.
 - Historical odds są dużo droższe kredytowo od bieżących; kupujemy je selektywnie do badań, a nowe snapshoty archiwizujemy sami.
 
@@ -67,15 +81,6 @@ fallback_source:
 last_verified_at:
 owner_decision:
 ```
-
-## Kolejka nowych źródeł
-
-| Źródło | Co może wnieść | Status audytu |
-|---|---|---|
-| TBD-1 | alternatywny feed player props | not-started |
-| TBD-2 | zaawansowane xG/event data dla wielu lig | not-started |
-| TBD-3 | exchange/liquidity poza Betfair | not-started |
-| TBD-4 | line movement / sharp-book benchmark | not-started |
 
 ## Zasada wyboru
 

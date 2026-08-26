@@ -25,7 +25,8 @@ Równolegle badamy rynki zdarzeń o wysokiej powtarzalności, m.in. shots, shots
 - wszystkie informacje są point-in-time;
 - każda cecha i interakcja musi przeżyć test OOS;
 - `NO BET` i `NO PREDICTION` są pełnoprawnymi wynikami;
-- pogoda jest przede wszystkim cechą wyjątków/extreme-environment, a nie stałym filarem każdego meczu.
+- pogoda jest przede wszystkim cechą wyjątków/extreme-environment, a nie stałym filarem każdego meczu;
+- przed kodowaniem wykonujemy ręczne pilotaże na realnych meczach, aby ujawnić luki danych i złe założenia.
 
 ## Rdzeń
 
@@ -42,8 +43,13 @@ Równolegle badamy rynki zdarzeń o wysokiej powtarzalności, m.in. shots, shots
 - [[16 - Rejestr źródeł danych]]
 - [[18 - Ekonomika pipeline i cost-aware scanning]]
 - [[19 - Globalny zakres lig i quality gate]]
+- [[20 - Global Data Coverage Matrix v1]]
 - [[07 - Plan danych historycznych]]
 - [[06 - Matematyka bukmacherska]]
+
+## Pilotaże
+
+- [[21 - Pilot live 27-08-2026]] — pierwszy ręczny test na rewanżach eliminacji UEL/UECL przed rozpoczęciem kodowania.
 
 ## Zarządzanie badaniami
 
