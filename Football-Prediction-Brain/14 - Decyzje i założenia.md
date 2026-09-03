@@ -6,6 +6,12 @@ tags: [decisions, assumptions, changelog]
 
 ## Przyjęte
 
+- Docelowy Model Buk jest **suchym, matematyczno-statystycznym systemem probabilistycznym**. Decyzja nie może zależeć od subiektywnego „wydaje mi się”.
+- Każde `P_model` musi być reprodukowalne z wersji danych, cech, parametrów i kodu/modelu.
+- Ręczne pilotaże oznaczamy jako `manual/research`; ich procenty są hipotezami procesu, nie walidacją produkcyjnego modelu.
+- Każdy testowy bet musi zostać zamrożony przed kickoffem z co najmniej: timestampem, meczem, rynkiem/linią, kursem, `P_model`, wersją modelu i decyzją.
+- Hipotezy bez zamrożonego `P_model` i kursu nie mogą być po fakcie zaliczane jako wygrane predykcje.
+- Kanoniczny rejestr eksperymentów jest wersjonowany w `experiments/test-bets.csv`; Excel jest wygodnym widokiem roboczym/dashboardem.
 - Premier League jest pierwszym środowiskiem walidacyjnym, nie docelowym ograniczeniem.
 - Docelowo system ma obsługiwać szeroki universe lig i europejskich pucharów, a później więcej, jeśli dane/rynek uzasadniają koszt.
 - Pierwsze rynki modelowe: 1X2, O/U 2.5, BTTS.
@@ -22,6 +28,17 @@ tags: [decisions, assumptions, changelog]
 - H2H ani seria nie są samodzielnym dowodem przewagi.
 - Pogoda ma niski priorytet w normalnych warunkach; badamy głównie environment/climate shocks i interakcje.
 
+## Minimalna matematyka decyzji
+
+Dla dziesiętnego kursu `o` i modelowego prawdopodobieństwa `p`:
+
+- `fair_odds = 1 / p`
+- `raw_implied_probability = 1 / o`
+- `edge_pp = p - p_market_devig`
+- `EV_gross = p * o - 1`
+
+W produkcji `BET` nie wynika wyłącznie z dodatniego surowego EV. Musi również przejść kalibrację, niepewność, data quality, koszty wykonania i ustalony minimalny margines bezpieczeństwa.
+
 ## Ostrożne hipotezy, nie fakty
 
 - niszowe ligi mogą być mniej efektywne, ale równocześnie mieć gorsze dane, wyższą marżę i niższą płynność;
@@ -33,13 +50,13 @@ tags: [decisions, assumptions, changelog]
 
 ## Otwarte decyzje
 
-- liczba lig w Global Coverage Matrix v1;
 - minimalny `League/Market Quality Score`;
 - dzienny i miesięczny budget cap na API/data;
 - maksymalny koszt danych na jednego actionable candidate;
 - dokładny cutoff modeli;
 - metoda usuwania vig;
 - pierwsze rynki zdarzeń do produkcyjnego testu;
+- formalna metoda estymacji `P_model` dla SOT/shots/corners/cards;
 - próg edge po uwzględnieniu niepewności i kosztów;
 - finalny provider stack i licencje.
 

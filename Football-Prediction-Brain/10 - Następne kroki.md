@@ -11,14 +11,36 @@ tags: [next-actions, roadmap]
 - [x] Wprowadzić zasadę cost-aware scanning i lejka danych.
 - [x] Zbudować wstępny Global Data Coverage Matrix dla ok. 20–30 lig + europejskich pucharów.
 - [x] Uruchomić pierwszy ręczny pilot live na realnych meczach przed kodowaniem.
-- [ ] Zakończyć pilot 27.08.2026 wynikami po meczu i ocenić, które sygnały były użyteczne.
+- [x] Utworzyć kanoniczny rejestr testowych betów oraz Excel tracker/dashboard.
+- [x] Formalnie rozdzielić ręczne pilotaże od produkcyjnego, matematycznego modelu.
+- [ ] Zamknąć Pilot #1 pełnym post-mortem i frozen metrics.
+- [ ] Zamrozić Pilot #2 w rejestrze przed kickoffami i rozliczyć wszystkie wpisy bez hindsight.
+- [ ] Zdefiniować reprodukowalny model `P_model` dla pierwszego rynku zdarzeń (np. corners lub SOT) zamiast ręcznych procentów.
+- [ ] Zdefiniować uncertainty band, minimalny edge i regułę `BET/NO BET/NO PREDICTION`.
 - [ ] Nadać każdej parze `league×market` Data/Market Quality Score.
 - [ ] Zmierzyć koszt pobierania danych na ligę, dzień i shortlistę.
 - [ ] Wykonać Provider Shootout: API-Football vs TheStatsAPI (+ Sportmonks jeśli potrzebne).
+- [ ] Wykonać osobny audit polskich bookmakerów dla team props/corners/SOT/shots/cards.
 - [ ] Wybrać pierwszy realny `budget cap` na dzień/tydzień.
 - [ ] Zbudować Minimum Viable Dataset oraz canonical IDs.
 - [ ] Uruchomić tani kolektor fixtures/basic odds oraz archiwizację snapshotów.
-- [ ] Zbudować v0.1 i walk-forward backtest.
+- [ ] Zbudować kodowy v0.1 i walk-forward backtest.
+
+## Najbliższy eksperyment modelowy
+
+Wybrać **jeden market family** z wystarczającą historią (preferencyjnie team corners albo team SOT) i stworzyć pierwszy formalny baseline:
+
+1. rozkład count data (Poisson / Negative Binomial jako benchmarki);
+2. team creation strength;
+3. opponent suppression strength;
+4. home/away;
+5. time decay i strength of schedule;
+6. dopiero potem interakcje;
+7. chronologiczny holdout;
+8. kalibracja progów `>= x`;
+9. porównanie z zamrożonym kursem.
+
+Celem jest zastąpienie ręcznego `P_model=66%` liczbą wyprodukowaną przez jednoznaczny algorytm.
 
 ## Cost-aware pipeline
 
@@ -39,18 +61,10 @@ tags: [next-actions, roadmap]
 - [ ] Oznaczyć structural breaks i zmiany providerów.
 - [ ] Zbudować canonical IDs i reconciliation między providerami.
 
-## Równoległy tor: zdarzenia powtarzalne
-
-- [ ] Zweryfikować historyczne coverage shots/SOT/corners/cards.
-- [ ] Zbudować profile progów per team/venue/opponent strength/sezon.
-- [ ] Dodać shrinkage, lower bounds i minimalną próbę.
-- [ ] Przetestować interakcje z [[17 - Interakcje i wzorce powtarzalne]].
-- [ ] Do deep-data kierować wyłącznie wzorce, które przeszły tani screening.
-
 ## Definition of done pierwszego pipeline'u
 
-Reprodukowalny system, który może obserwować wiele lig, odrzucać słabe dane, liczyć tanie cechy lokalnie, pobierać drogie dane dopiero dla shortlisty, raportować prawdopodobieństwo/fair odds/edge oraz pełny koszt wygenerowania decyzji `BET/NO BET/NO PREDICTION`.
+Reprodukowalny system, który może obserwować wiele lig, odrzucać słabe dane, liczyć tanie cechy lokalnie, pobierać drogie dane dopiero dla shortlisty, raportować skalibrowane prawdopodobieństwo/fair odds/edge oraz pełny koszt wygenerowania decyzji `BET/NO BET/NO PREDICTION`.
 
 ## Czego jeszcze nie robić
 
-Nie kupować wielu feedów równolegle bez testu wartości. Nie odpytujemy kosztownych endpointów dla wszystkich spotkań. Nie optymalizujemy liczby zakładów — optymalizujemy wartość netto po kosztach i ryzyku. Nie traktujemy ręcznego pilota jako dowodu przewagi — służy on do testu procesu i jakości danych.
+Nie kupować wielu feedów równolegle bez testu wartości. Nie odpytujemy kosztownych endpointów dla wszystkich spotkań. Nie optymalizujemy liczby zakładów — optymalizujemy wartość netto po kosztach i ryzyku. Nie traktujemy ręcznego pilota jako dowodu przewagi ani nie poprawiamy historycznych `P_model` po poznaniu wyniku.
