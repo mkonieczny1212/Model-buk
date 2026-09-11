@@ -111,6 +111,12 @@ def predict_fixture(
     home_team: str,
     away_team: str,
 ) -> dict:
+    """Generate a point-in-time corner forecast for one future fixture.
+
+    The future fixture is appended with unknown outcomes. `build_features` shifts
+    every rolling statistic by one match, so the prediction only uses information
+    available before the fixture.
+    """
     validate_raw_history(raw_history)
     history = raw_history.copy()
     history["date"] = pd.to_datetime(history["date"], format="mixed")
@@ -197,6 +203,7 @@ def attach_total_market_price(
     over_odds: float,
     under_odds: float,
 ) -> dict:
+    """Attach market math after the PURE model prediction is already produced."""
     matches = [m for m in prediction["total_markets"] if float(m["line"]) == float(line)]
     if not matches:
         raise ValueError(f"Unsupported total-corners line: {line}")

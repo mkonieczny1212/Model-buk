@@ -13,6 +13,7 @@ from model_buk.distributions import nb_over_probability
 from model_buk.features import build_features
 from model_buk.inference import LoadedCornerEngine, load_corner_engine
 from model_buk.model import over_probability
+from model_buk.models.corner_dual_v02 import V02_FEATURES
 from model_buk.schema import validate_raw_history
 from model_buk.strengths import add_corner_strength_features
 from model_buk.v02_backtest import TEAM_LINES, TOTAL_LINES

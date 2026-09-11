@@ -21,6 +21,12 @@ def fit_live_corner_models(
     eval_v02_metadata_path: str | Path,
     model_root: str | Path,
 ) -> dict:
+    """Fit current-use models on every completed match available locally.
+
+    This function is intentionally separate from backtesting. Once a historical
+    reference period has been opened it can be used for current fitting, but it
+    cannot be reused as untouched evidence of edge.
+    """
     frame = pd.read_csv(processed_path)
     frame["date"] = pd.to_datetime(frame["date"], format="mixed")
     completed = frame[

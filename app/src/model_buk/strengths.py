@@ -65,6 +65,8 @@ def add_corner_strength_features(
         shrinkage_games, min_rate, max_rate,
     )
 
+    # EWM signals use overall recent team behavior, normalized to the relevant
+    # league venue rate for the target side.
     out["home_corner_attack_strength_ewm"] = _shrunk_ratio(
         out["home_corners_for_ewm8"], home_base, out["home_games_prior"],
         shrinkage_games, min_rate, max_rate,
@@ -82,6 +84,8 @@ def add_corner_strength_features(
         shrinkage_games, min_rate, max_rate,
     )
 
+    # Geometric combination keeps the multiplicative interpretation while being
+    # less explosive than a full product of attack and opponent concession.
     out["home_mu_strength_baseline"] = home_base * np.sqrt(
         out["home_corner_attack_strength"] * out["away_corner_concede_strength"]
     )

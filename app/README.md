@@ -121,6 +121,26 @@ model-buk predict-corners \
 
 The market block returns de-vig market probability, fair odds, edge, EV and `BET/NO BET` using the frozen thresholds from `config/corners_v02.toml`. `predict-corners-v02` remains available as a research-only dual-model command.
 
+
+## Run the web application
+
+Model Buk now includes a FastAPI backend and a lightweight browser UI. The web layer uses the same frozen inference code as the CLI and stores prospective prediction payloads in an append-only SQLite registry.
+
+```bash
+pip install -e .
+model-buk-web
+```
+
+Open `http://127.0.0.1:8000`.
+
+Useful endpoints:
+- `GET /api/status` — model/data freshness and champion/challenger state;
+- `GET /api/teams` — canonical teams available in local history;
+- `POST /api/predict/corners` — PURE prediction plus optional market comparison;
+- `GET /api/predictions` — frozen local prediction log.
+
+Runtime paths can be overridden with `MODEL_BUK_HISTORY`, `MODEL_BUK_MODEL_ROOT`, `MODEL_BUK_CONFIG` and `MODEL_BUK_DB`.
+
 ## Verification
 
 Current implementation checks:
