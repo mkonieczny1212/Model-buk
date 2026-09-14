@@ -7,3 +7,5 @@ openpyxl>=3.1
 pytest>=8.0
 fastapi>=0.115
 uvicorn>=0.30
+
+requests>=2.32

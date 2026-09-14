@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from model_buk.web.service import PredictionService, ServicePaths
+from model_buk.web.service import MatchAnalysisService, PredictionService, ServicePaths
 from model_buk.web.storage import PredictionStore
 
 
@@ -24,29 +24,50 @@ class CornerPredictionRequest(BaseModel):
     persist: bool = True
 
 
-def _default_service() -> PredictionService:
-    return PredictionService(
-        ServicePaths(
-            history=Path(os.getenv("MODEL_BUK_HISTORY", "data/canonical/epl_matches_v01.csv.gz")),
-            model_root=Path(os.getenv("MODEL_BUK_MODEL_ROOT", "models")),
-            config=Path(os.getenv("MODEL_BUK_CONFIG", "config/corners_v02.toml")),
-        )
+class ManualAnalysisRequest(BaseModel):
+    league_code: str
+    date: str
+    home_team: str
+    away_team: str
+    persist: bool = True
+
+
+def _paths() -> ServicePaths:
+    return ServicePaths(
+        history=Path(os.getenv("MODEL_BUK_HISTORY", "data/canonical/epl_matches_v01.csv.gz")),
+        model_root=Path(os.getenv("MODEL_BUK_MODEL_ROOT", "models")),
+        config=Path(os.getenv("MODEL_BUK_CONFIG", "config/corners_v02.toml")),
+        multileague_history=Path(os.getenv("MODEL_BUK_MULTILEAGUE_HISTORY", "data/multileague/europe16_matches_v05.csv.gz")),
+        stadiums=Path(os.getenv("MODEL_BUK_STADIUMS", "data/stadiums_europe.json")),
     )
+
+
+def _default_service() -> PredictionService:
+    return PredictionService(_paths())
+
+
+def _default_analysis_service() -> MatchAnalysisService:
+    return MatchAnalysisService(_paths())
 
 
 def create_app(
     service: PredictionService | Any | None = None,
+    analysis_service: MatchAnalysisService | Any | None = None,
     store: PredictionStore | Any | None = None,
     static_dir: str | Path | None = None,
 ) -> FastAPI:
-    service = service or _default_service()
+    legacy_service = service or _default_service()
+    # Existing tests can inject only the legacy service. New production startup
+    # creates the v0.5 analysis orchestrator automatically.
+    if analysis_service is None and service is None:
+        analysis_service = _default_analysis_service()
     store = store or PredictionStore(os.getenv("MODEL_BUK_DB", "runtime/model_buk.sqlite3"))
     static_path = Path(static_dir or Path(__file__).with_name("static"))
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.4.0",
-        description="Research/paper football probability and market-value engine.",
+        version="0.5.0",
+        description="Multi-league, multi-market football probability + current-context research engine.",
     )
 
     @app.get("/api/health")
@@ -56,21 +77,82 @@ def create_app(
     @app.get("/api/status")
     def status() -> dict[str, Any]:
         try:
-            return service.status()
+            if analysis_service is not None:
+                return analysis_service.status()
+            return legacy_service.status()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/catalog/leagues")
+    def leagues() -> dict[str, Any]:
+        if analysis_service is None:
+            return {"leagues": []}
+        try:
+            return {"leagues": analysis_service.leagues()}
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/teams")
-    def teams() -> dict[str, list[str]]:
+    def teams(league: str | None = None) -> dict[str, list[str]]:
         try:
-            return {"teams": service.teams()}
+            if league and analysis_service is not None:
+                return {"teams": analysis_service.teams(league)}
+            return {"teams": legacy_service.teams()}
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.get("/api/fixtures")
+    def fixtures(date: str, league: list[str] = Query(default=[])) -> dict[str, Any]:
+        if analysis_service is None:
+            return {"mode": "manual", "fixtures": [], "message": "Live fixture service unavailable in this test mode."}
+        try:
+            return analysis_service.fixtures(date, league or None)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/analyze/manual")
+    def analyze_manual(request: ManualAnalysisRequest) -> dict[str, Any]:
+        if analysis_service is None:
+            raise HTTPException(status_code=503, detail="v0.5 analysis service unavailable")
+        try:
+            payload = analysis_service.analyze_manual(
+                request.league_code,
+                request.date,
+                request.home_team,
+                request.away_team,
+            )
+            if request.persist:
+                payload["prediction_id"] = store.save(payload)
+            return payload
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/api/analyze/fixture/{fixture_id}")
+    def analyze_fixture(fixture_id: int, deep: bool = True, persist: bool = True) -> dict[str, Any]:
+        if analysis_service is None:
+            raise HTTPException(status_code=503, detail="v0.5 analysis service unavailable")
+        try:
+            payload = analysis_service.analyze_fixture(fixture_id, deep=deep)
+            normalized_odds = payload.get("normalized_odds") or []
+            if normalized_odds:
+                payload["odds_snapshots_saved"] = store.save_odds(fixture_id, normalized_odds)
+            if persist:
+                payload["prediction_id"] = store.save(payload)
+            return payload
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Legacy v0.4 corner endpoint remains available for reproducibility.
     @app.post("/api/predict/corners")
     def predict_corners(request: CornerPredictionRequest) -> dict[str, Any]:
         try:
-            payload = service.predict(**request.model_dump(exclude={"persist"}))
+            payload = legacy_service.predict(**request.model_dump(exclude={"persist"}))
             if request.persist:
                 payload["prediction_id"] = store.save(payload)
             return payload
