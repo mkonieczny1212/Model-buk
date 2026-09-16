@@ -40,11 +40,14 @@ def apply_current_observations(
     home_rows: list[dict[str, Any]],
     away_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Blend on-demand current-season observations into the historical baseline.
+    """Blend current-season recent-match observations into the historical baseline.
 
-    The adjustment is deterministic and shrunk toward the historical point-in-time
-    rate. It is intentionally capped; live inputs can update a stale baseline but
-    cannot overwhelm it on a handful of matches.
+    The provider adapter now requests recent completed matches from the SAME
+    competition and season as the fixture. The adjustment remains deterministic
+    and shrunk toward the historical point-in-time rate. It is intentionally
+    capped; current form can update a stale baseline but cannot overwhelm it on a
+    handful of matches. Opponent-strength correction is not fabricated here; it
+    must be learned and validated separately.
     """
     adjusted = {k: (v.copy() if isinstance(v, dict) else v) for k, v in analysis.items()}
     expected = {k: v.copy() for k, v in analysis["expected"].items()}
@@ -85,11 +88,11 @@ def apply_current_observations(
 
             live_factors.append({
                 "key": f"live_{metric}",
-                "label": f"Bieżące {metric}: ostatnie mecze",
+                "label": f"Bieżący sezon · {metric}: ostatnie mecze",
                 "home": {"for": round(h_for, 2), "against": round(h_against, 2), "n": max(hfn, han)},
                 "away": {"for": round(a_for, 2), "against": round(a_against, 2), "n": max(afn, aan)},
                 "status": "model_input",
-                "explanation": "Aktualne statystyki z API są shrinkowane do historycznego baseline i wpływają na oczekiwane count-y.",
+                "explanation": "Ostatnie mecze z bieżącego sezonu tej samej ligi są shrinkowane do historycznego baseline i wpływają na oczekiwane count-y. Korekta strength-of-schedule będzie osobnym walidowanym krokiem.",
             })
         samples[metric] = {"home": max(hfn, han), "away": max(afn, aan)}
 

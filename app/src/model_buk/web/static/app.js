@@ -3,7 +3,7 @@ const pct = x => x === null || x === undefined ? '—' : `${(Number(x) * 100).to
 const odd = x => x === null || x === undefined ? '—' : Number(x).toFixed(2);
 const num = x => x === null || x === undefined ? '—' : Number(x).toFixed(2);
 const pp = x => x === null || x === undefined ? '—' : `${(Number(x) * 100).toFixed(1)} pp`;
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
 
 let state = {status:null, leagues:[], selectedLeagues:new Set(), analysis:null, marketGroup:'goals'};
 
@@ -32,13 +32,16 @@ async function loadStatus() {
     chip.textContent = live.connected ? `LIVE: ${live.name}` : 'LIVE DATA: niepodłączone';
     chip.className = `status-chip ${live.connected?'ok':'warn'}`;
     const stats = [
-      ['Wersja', s.app_version || 'v0.5'],
+      ['Wersja', s.app_version || 'v0.6'],
       ['Tryb', s.deployment_status || 'research'],
       ['Ligi', s.leagues ?? '—'],
       ['Historia', s.historical_matches ? `${Number(s.historical_matches).toLocaleString('pl-PL')} meczów` : '—'],
       ['Rynki', (s.market_engines || []).join(', ') || '—'],
       ['Live provider', live.connected ? 'podłączony' : 'brak klucza'],
-      ['EPL corners champion', s.epl_corner_champion_available ? 'dostępny' : 'brak'],
+      ['Goal engine A', s.goal_dynamic_xg_available ? `Big Five · ${s.goal_dynamic_xg_leagues?.length||0} lig` : 'brak'],
+      ['Corner reference', s.epl_corner_champion_available ? 'EPL benchmark' : 'brak'],
+      ['Pełny target-data stack', s.data_readiness?.complete_for_full_target_model ? 'TAK' : 'NIE — luki jawne'],
+      ['Krytyczne luki', s.data_readiness?.critical_gaps?.length ?? '—'],
     ];
     $('systemStats').innerHTML = stats.map(([a,b])=>`<div class="system-card"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('');
   } catch(e) {
@@ -50,8 +53,9 @@ async function loadStatus() {
 async function loadLeagues() {
   const {leagues}=await api('/api/catalog/leagues'); state.leagues=leagues;
   if (!state.selectedLeagues.size) leagues.forEach(l=>state.selectedLeagues.add(l.code));
-  $('leagueFilters').innerHTML = leagues.map(l=>`<button class="league-chip active" data-code="${l.code}">${esc(l.name)}</button>`).join('');
-  $('manualLeague').innerHTML = leagues.map(l=>`<option value="${l.code}">${esc(l.name)}</option>`).join('');
+  $('leagueFilters').innerHTML = leagues.map(l=>`<button class="league-chip active ${l.group==='europe'?'europe':''}" data-code="${l.code}" title="Warstwa analizy: ${esc(l.analysis_tier||'—')}">${esc(l.name)}</button>`).join('');
+  const manualLeagues=leagues.filter(l=>l.manual_analysis_ready!==false);
+  $('manualLeague').innerHTML = manualLeagues.map(l=>`<option value="${l.code}">${esc(l.name)}</option>`).join('');
   document.querySelectorAll('.league-chip').forEach(btn=>btn.addEventListener('click',()=>{
     const code=btn.dataset.code;
     if(state.selectedLeagues.has(code)){state.selectedLeagues.delete(code);btn.classList.remove('active')}else{state.selectedLeagues.add(code);btn.classList.add('active')}
@@ -113,29 +117,48 @@ function renderMarketTable(a){
   const modelRows=(a.markets||[]).filter(m=>m.group===state.marketGroup);
   $('marketRows').innerHTML=modelRows.length?modelRows.map(m=>{
     const c=compared.get(m.market_key);
-    const decision=c?.decision||'FAIR ONLY';
+    const decision=c?.decision||(m.eligible_for_bet?'FAIR ONLY':'RESEARCH');
+    const grade=m.model_grade||c?.model_grade||'B';
+    const engine=m.engine||c?.engine||'baseline';
+    const reason=c?.decision_reason||(!m.eligible_for_bet?'Model nie przeszedł jeszcze pełnego OOS/data-quality gate.':'Brak ceny do porównania.');
     return `<tr class="${decision==='BET'?'bet-row':''}">
-      <td><strong>${esc(m.label)}</strong><small>${m.threshold!==null&&m.threshold!==undefined?`próg ${m.threshold}`:''}</small></td>
+      <td><strong>${esc(m.label)}</strong><small><span class="grade-badge grade-${esc(grade)}">${esc(grade)}</span> ${esc(engine)}${m.threshold!==null&&m.threshold!==undefined?` · próg ${m.threshold}`:''}</small></td>
       <td>${pct(m.probability)}</td><td>${odd(m.fair_odds)}</td>
       <td>${esc(c?.bookmaker||'—')}</td><td>${odd(c?.odds)}</td><td>${pct(c?.market_probability)}</td>
       <td class="${c?.edge>0?'positive':''}">${pp(c?.edge)}</td><td class="${c?.ev>0?'positive':''}">${pct(c?.ev)}</td>
-      <td><span class="decision-tag ${decision==='BET'?'bet':''}">${esc(decision)}</span></td>
+      <td title="${esc(reason)}"><span class="decision-tag ${decision==='BET'?'bet':decision==='RESEARCH'?'research':''}">${esc(decision)}</span></td>
     </tr>`
   }).join(''):'<tr><td colspan="9" class="muted">Brak rynków w tej kategorii.</td></tr>';
 }
 
 function renderOpportunities(a){
-  const rows=a.opportunities||[];
+  const rows=a.top_candidates||[];
   if(!rows.length){
-    $('opportunityList').innerHTML=`<div class="empty-state compact">${a.raw_odds_count? 'Brak rynku spełniającego obecny edge + EV gate.' : 'Brak kursów z live feedu — pokazujemy fair odds, ale nie wydajemy decyzji BET.'}</div>`;
+    const msg=(a.markets||[]).length
+      ? 'Model policzył rynki, ale nie udało się zbudować czytelnej shortlisty. Pełne prawdopodobieństwa są niżej.'
+      : 'Brak predykcji dla tego meczu: model nie ma jeszcze wystarczającego, zgodnego zbioru danych dla tej rozgrywki.';
+    $('opportunityList').innerHTML=`<div class="empty-state compact">${msg}</div>`;
     return;
   }
-  $('opportunityList').innerHTML=rows.slice(0,6).map(o=>`<div class="opportunity-card">
-    <div class="opp-head"><span>${esc(o.group)}</span><b>BET</b></div>
-    <h4>${esc(o.label)}</h4>
-    <div class="opp-price"><strong>@ ${odd(o.odds)}</strong><span>${esc(o.bookmaker)}</span></div>
-    <div class="opp-stats"><span>Model <b>${pct(o.probability)}</b></span><span>Fair <b>${odd(o.fair_odds)}</b></span><span>Edge <b>${pp(o.edge)}</b></span><span>EV <b>${pct(o.ev)}</b></span></div>
-  </div>`).join('');
+  $('opportunityList').innerHTML=rows.slice(0,5).map((o,i)=>{
+    const decision=o.decision||'WATCH';
+    const grade=o.model_grade||'B';
+    const scoreBits=[];
+    if(o.edge!==null&&o.edge!==undefined) scoreBits.push(`edge ${pp(o.edge)}`);
+    if(o.ev!==null&&o.ev!==undefined) scoreBits.push(`EV ${pct(o.ev)}`);
+    const hasPrice=o.odds!==null&&o.odds!==undefined;
+    const priceBlock=hasPrice
+      ? `<div class="opp-price"><strong>@ ${odd(o.odds)}</strong><span>${esc(o.bookmaker||'—')}</span></div>`
+      : `<div class="opp-price model-only"><strong>MODEL ONLY</strong><span>brak porównywalnego kursu</span></div>`;
+    return `<div class="opportunity-card ${decision==='BET'?'is-bet':'is-watch'}">
+      <div class="opp-head"><span>#${i+1} · ${esc(o.group)}</span><b class="${decision==='BET'?'positive':''}">${esc(decision)}</b></div>
+      <h4>${esc(o.label)}</h4>
+      ${priceBlock}
+      <div class="opp-primary"><span>Model P</span><strong>${pct(o.probability)}</strong><small>fair ${odd(o.fair_odds)}</small></div>
+      <div class="opp-stats"><span>P rynku <b>${pct(o.market_probability)}</b></span><span>Edge <b>${pp(o.edge)}</b></span><span>EV <b>${pct(o.ev)}</b></span><span>Model <b>${esc(grade)}</b></span></div>
+      <div class="opp-engine">${esc(o.engine||'model')} · ${esc(o.decision_reason||scoreBits.join(' · '))}</div>
+    </div>`;
+  }).join('');
 }
 
 function factorValue(v){
@@ -157,7 +180,14 @@ function renderContext(a){
   const c=a.current_context||{};
   if(!c.connected){$('contextList').innerHTML=`<div class="empty-state compact">${esc(c.message||'Brak bieżącego kontekstu.')}</div>`;return;}
   const lineups=c.lineups||[]; const injuries=c.injuries||[]; const w=c.weather||{}; const errors=c.errors||[];
+  const cov=c.coverage||{};
+  const fixturesCov=cov.fixtures||{};
+  const coverageBits=[
+    ['stats', fixturesCov.statistics_fixtures], ['players', fixturesCov.statistics_players], ['lineups', fixturesCov.lineups],
+    ['injuries', cov.injuries], ['odds', cov.odds]
+  ].filter(([,v])=>v!==undefined).map(([k,v])=>`${k}:${v?'✓':'×'}`).join(' · ');
   const rows=[
+    ['Coverage providera', coverageBits||'niezweryfikowane dla league-season', coverageBits?'ok':'neutral'],
     ['Bieżące statystyki', a.current_data?.used_in_model?'użyte w modelu':'brak / za mało danych', a.current_data?.used_in_model?'ok':'warn'],
     ['Kontuzje / zawieszenia', `${injuries.length} rekordów`, errors.some(x=>String(x).startsWith('injuries:'))?'warn':'ok'],
     ['Składy', lineups.length>=2?'potwierdzone / dostępne':'jeszcze niedostępne', lineups.length>=2?'ok':'neutral'],
@@ -184,7 +214,7 @@ function renderAnalysis(a){
   $('analysisMeta').textContent=`${String(a.fixture.date||'').slice(0,16).replace('T',' ')}${a.fixture.round?' · '+a.fixture.round:''}`;
   const conf=a.confidence || {score:a.data_quality?.score,label:'baseline'};
   $('confidenceScore').textContent=conf.score!==undefined?`${Number(conf.score).toFixed(0)}/100`:'—'; $('confidenceLabel').textContent=conf.label||'';
-  $('analysisMode').textContent=a.mode==='live_current_context'?'LIVE + HISTORY':'HISTORY BASELINE';
+  $('analysisMode').textContent=a.mode==='live_current_context'?'LIVE + DYNAMIC STATE':'HISTORY / RESEARCH';
   const warn=a.data_quality?.warning; $('analysisWarning').classList.toggle('hidden',!warn); $('analysisWarning').textContent=warn||'';
   expectedCard('xGoals','xGoalsTeams',a.expected?.goals); expectedCard('xCorners','xCornersTeams',a.expected?.corners); expectedCard('xShots','xShotsTeams',a.expected?.shots); expectedCard('xSot','xSotTeams',a.expected?.sot); expectedCard('xCards','xCardsTeams',a.expected?.cards);
   renderOpportunities(a); marketGroups(a); renderMarketTable(a); renderFactors(a); renderContext(a); renderBenchmarks(a);

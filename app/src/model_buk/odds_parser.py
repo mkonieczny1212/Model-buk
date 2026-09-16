@@ -132,7 +132,16 @@ def rank_opportunities(
         probability = float(m["probability"])
         edge = probability - market_p
         ev = expected_value(probability, price)
-        decision = "BET" if edge >= min_edge and ev >= min_ev else "NO BET"
+        eligible = bool(m.get("eligible_for_bet", False))
+        if not eligible:
+            decision = "RESEARCH"
+            reason = "Model/market has not passed the required OOS + data-quality gate yet."
+        elif edge >= min_edge and ev >= min_ev:
+            decision = "BET"
+            reason = "Eligible model and minimum edge + EV thresholds passed."
+        else:
+            decision = "NO BET"
+            reason = "Eligible model, but current price does not clear edge + EV thresholds."
         compared.append({
             **m,
             "bookmaker": row.get("bookmaker"),
@@ -144,6 +153,8 @@ def rank_opportunities(
             "edge": edge,
             "ev": ev,
             "decision": decision,
+            "decision_reason": reason,
+            "eligible_for_bet": eligible,
             "odds_update": row.get("update"),
             "polish_bookmaker_hint": row.get("is_polish_hint", False),
         })
@@ -159,6 +170,6 @@ def rank_opportunities(
         candidates = polish if prefer_polish and polish else rows
         best_rows.append(max(candidates, key=lambda r: (r["odds"], r["ev"])))
 
-    best_rows.sort(key=lambda r: (r["decision"] == "BET", r["ev"], r["edge"]), reverse=True)
+    best_rows.sort(key=lambda r: (r["decision"] == "BET", r.get("ev", -999), r.get("probability", 0), r.get("edge", -999)), reverse=True)
     opportunities = [r for r in best_rows if r["decision"] == "BET"]
     return opportunities, best_rows

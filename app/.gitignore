@@ -11,6 +11,7 @@ data/**/*.csv.gz
 data/**/*.xlsx
 data/**/*.parquet
 models/**/*.cbm
+models/**/*.joblib
 
 # Large generated prediction tables; keep compact summaries/metrics only
 outputs/*predictions*.csv

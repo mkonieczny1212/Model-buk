@@ -1,8 +1,8 @@
-# Model Buk v0.5 — Match Analysis Dashboard
+# Model Buk v0.6.1 — Dynamic Match Analysis
 
-Model Buk is a reproducible football probability + market-value research engine. v0.5 expands the previous EPL/corners prototype into a **multi-league, multi-market application** with an optional live context layer.
+Model Buk is a reproducible football probability + market-value research engine. v0.6 begins replacing historical-rate baselines with learned dynamic team-state models and makes data gaps explicit instead of inventing missing inputs.
 
-## What changed in v0.5
+## Current application scope
 
 ### 16 European leagues
 
@@ -71,7 +71,7 @@ Default decision gate remains research-only and requires both positive probabili
 1. Unzip the full project.
 2. Double-click `URUCHOM_MODEL_BUK.bat`.
 3. First launch may take a few minutes while Python packages are installed.
-4. The one-click launcher opens automatically at `http://127.0.0.1:8010/?v=05` to avoid collisions with older local builds that may still occupy port 8000.
+4. The browser opens automatically at `http://127.0.0.1:8010/?v=061`.
 
 ### Enable live data
 
@@ -102,8 +102,6 @@ pytest -q
 model-buk-web
 ```
 
-Manual `model-buk-web` uses port 8000 by default. The bundled Windows one-click launcher sets `MODEL_BUK_PORT=8010` deliberately.
-
 ## Web API
 
 - `GET /api/status`
@@ -115,7 +113,7 @@ Manual `model-buk-web` uses port 8000 by default. The bundled Windows one-click 
 - `GET /api/predictions`
 - legacy: `POST /api/predict/corners`
 
-## Model architecture in v0.5
+## Model architecture
 
 ### Broad multi-market baseline
 
@@ -147,4 +145,26 @@ The trained v0.1/v0.2 EPL Corner Engine is kept as a **separate historical bench
 
 ## Current status
 
-**Research / paper betting only.** v0.5 is a substantially more complete application and data pipeline, not proof of durable profitability. The next research priority is validating the broad engines league-by-league and building quantified player/lineup strength so current injuries and confirmed XI can enter probabilities without subjective weights.
+**Research / paper betting only.** v0.6.1 is a substantially more complete application and data pipeline, not proof of durable profitability. The next research priority is validating the broad engines league-by-league and building quantified player/lineup strength so current injuries and confirmed XI can enter probabilities without subjective weights.
+
+
+## v0.6 research checkpoint
+
+- Primary UI scope: top 10 domestic leagues + UEFA Champions League / Europa League / Conference League.
+- `goal-dynamic-xg-v0.6` is the first learned dynamic engine: Big Five only, trained on 19,763 Understat matches (2014/15–2025/26) using point-in-time xG/npxG/PPDA/deep/xPoints states, rest/congestion and learned interactions.
+- Final 2025/26 OOS: home-goal MAE 0.9721, away-goal MAE 0.8669; naive xG-state benchmark 0.9883 / 0.9469. This is predictive evidence, **not proof of betting edge**.
+- Goal markets are marked predictive-grade A but remain `RESEARCH` until market calibration/CLV and prospective paper-trading gates are complete.
+- Corners/shots/SOT/cards remain grade B research engines until their richer historical/context pipelines are trained OOS.
+- The UI shows up to five positive-value candidates first and keeps the full market grid collapsed by default.
+- Weather now requires high-confidence venue matching or geocoded fixture city; low-confidence locations return no weather instead of guessing.
+- `GET /api/status` exposes a machine-readable `data_readiness` registry with explicit gaps.
+
+
+## v0.6.1 current-data and UX fixes
+
+- Team selectors use API-Football `league + current season` rosters when the live provider is connected; historical clubs are no longer mixed into the selector.
+- Current-form observations are fetched from the same league and current season as the selected fixture.
+- Cross-provider club-name resolution now supports multiple canonical variants (for example Athletic Bilbao ↔ Athletic Club / Ath Bilbao).
+- The Top 5 panel no longer looks empty when the model has probabilities but the odds feed has no comparable market: it shows `MODEL ONLY` forecasts and keeps value/BET status separate.
+- Research-grade positive edge can be shown as `RESEARCH`; `BET` remains restricted to fully eligible models.
+- Data-source gap plan: `docs/DATA_SOURCE_PLAN_V07.md`.

@@ -58,7 +58,7 @@ def create_app(
 ) -> FastAPI:
     legacy_service = service or _default_service()
     # Existing tests can inject only the legacy service. New production startup
-    # creates the v0.5 analysis orchestrator automatically.
+    # creates the v0.6 analysis orchestrator automatically.
     if analysis_service is None and service is None:
         analysis_service = _default_analysis_service()
     store = store or PredictionStore(os.getenv("MODEL_BUK_DB", "runtime/model_buk.sqlite3"))
@@ -66,7 +66,7 @@ def create_app(
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.5.0",
+        version="0.6.1",
         description="Multi-league, multi-market football probability + current-context research engine.",
     )
 
@@ -113,7 +113,7 @@ def create_app(
     @app.post("/api/analyze/manual")
     def analyze_manual(request: ManualAnalysisRequest) -> dict[str, Any]:
         if analysis_service is None:
-            raise HTTPException(status_code=503, detail="v0.5 analysis service unavailable")
+            raise HTTPException(status_code=503, detail="v0.6 analysis service unavailable")
         try:
             payload = analysis_service.analyze_manual(
                 request.league_code,
@@ -132,7 +132,7 @@ def create_app(
     @app.post("/api/analyze/fixture/{fixture_id}")
     def analyze_fixture(fixture_id: int, deep: bool = True, persist: bool = True) -> dict[str, Any]:
         if analysis_service is None:
-            raise HTTPException(status_code=503, detail="v0.5 analysis service unavailable")
+            raise HTTPException(status_code=503, detail="v0.6 analysis service unavailable")
         try:
             payload = analysis_service.analyze_fixture(fixture_id, deep=deep)
             normalized_odds = payload.get("normalized_odds") or []

@@ -8,7 +8,7 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
-from model_buk.catalog import DIVISION_TO_LEAGUE, LEAGUES
+from model_buk.catalog import DIVISION_TO_LEAGUE, LEAGUES, PRIMARY_CODES
 from model_buk.distributions import nb_over_probability, nb_pmf
 from model_buk.team_names import resolve_team_name
 
@@ -249,6 +249,9 @@ def _market_row(key: str, label: str, group: str, line: float | None, side: str,
         "side": side,
         "probability": p,
         "fair_odds": 1.0 / p,
+        "engine": "multimarket-baseline-v0.5",
+        "model_grade": "B",
+        "eligible_for_bet": False,
     }
 
 
@@ -332,20 +335,30 @@ class MultiMarketEngine:
 
     def leagues(self) -> list[dict[str, Any]]:
         output = []
-        for spec in LEAGUES.values():
-            rows = self.history[self.history.Division.eq(spec.historical_division)]
+        for code in PRIMARY_CODES:
+            spec = LEAGUES[code]
+            if spec.historical_division:
+                rows = self.history[self.history.Division.eq(spec.historical_division)]
+            else:
+                rows = self.history.iloc[0:0]
             output.append({
                 "code": spec.code,
                 "name": spec.name,
                 "country": spec.country,
+                "group": spec.group,
+                "analysis_tier": spec.analysis_tier,
                 "matches": int(len(rows)),
                 "history_from": str(rows.MatchDate.min().date()) if len(rows) else None,
                 "history_through": str(rows.MatchDate.max().date()) if len(rows) else None,
+                "manual_analysis_ready": bool(spec.historical_division and len(rows)),
+                "live_fixture_ready": True,
             })
         return output
 
     def teams(self, league_code: str) -> list[str]:
         spec = LEAGUES[league_code]
+        if not spec.historical_division:
+            return []
         rows = self.history[self.history.Division.eq(spec.historical_division)]
         return sorted(set(rows.HomeTeam.dropna().astype(str)) | set(rows.AwayTeam.dropna().astype(str)))
 
@@ -356,6 +369,8 @@ class MultiMarketEngine:
         if league_code not in LEAGUES:
             raise ValueError(f"Unsupported league: {league_code}")
         spec = LEAGUES[league_code]
+        if not spec.historical_division:
+            raise ValueError(f"{spec.name}: competition-specific historical model is not ready yet; live fixture can be listed but must pass the data gate before pricing.")
         league = self.history[self.history.Division.eq(spec.historical_division)].copy()
         if league.empty:
             raise ValueError(f"No historical data for {spec.name}")

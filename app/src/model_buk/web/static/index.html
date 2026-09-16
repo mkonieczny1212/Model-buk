@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Model Buk v0.5</title>
+  <title>Model Buk v0.6</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -28,9 +28,9 @@
     <main class="content">
       <header class="topbar">
         <div>
-          <div class="eyebrow">MODEL BUK · v0.5</div>
+          <div class="eyebrow">MODEL BUK · v0.6.1</div>
           <h1>Match Analysis Dashboard</h1>
-          <p>Wiele lig, wiele rynków, bieżący kontekst i oddzielna warstwa value.</p>
+          <p>Dynamiczny team state, bieżący kontekst, walidowane modele i czytelny ranking value.</p>
         </div>
         <div id="providerChip" class="status-chip">Ładowanie…</div>
       </header>
@@ -55,7 +55,7 @@
           <div>
             <span class="kicker">Analiza ręczna</span>
             <h3>Wybierz dowolny mecz z obsługiwanej ligi</h3>
-            <p>Bez live API dostaniesz pełny historyczny baseline dla 1X2, goli, BTTS, rożnych, strzałów, SOT i kartek. Po podłączeniu API dochodzą bieżąca forma, kontuzje, składy, sędzia, pogoda i kursy.</p>
+            <p>Analiza ręczna jest dostępna tylko tam, gdzie mamy lokalną historię. Dla rozgrywek europejskich używaj bieżących fixture z API. Model nie udaje brakujących danych: niewalidowane rynki są oznaczane jako RESEARCH.</p>
           </div>
           <form id="manualForm" class="manual-form">
             <label>Liga<select id="manualLeague"></select></label>
@@ -91,34 +91,40 @@
           <div class="expected-card cards"><span>Kartki</span><strong id="xCards">—</strong><small id="xCardsTeams">—</small></div>
         </div>
 
-        <div class="panel-block">
+        <div class="panel-block primary-opportunities">
           <div class="block-head">
-            <div><span class="kicker">Value</span><h3>Najciekawsze okazje</h3></div>
-            <span class="help-text">BET pojawia się tylko, jeśli kurs jest dostępny i przechodzi edge + EV gate.</span>
+            <div><span class="kicker">Opportunity Ranker</span><h3>Top 5 dla tego meczu</h3></div>
+            <span class="help-text">Najpierw pokazujemy dodatni edge/EV przy dostępnych kursach. Jeśli feed nie ma porównywalnej ceny, pokazujemy MODEL ONLY — czystą prognozę bez udawania value. RESEARCH nie jest rekomendacją BET.</span>
           </div>
           <div id="opportunityList" class="opportunity-grid"></div>
         </div>
 
-        <div class="panel-block">
-          <div class="block-head market-head">
-            <div><span class="kicker">Probability → price</span><h3>Rynki</h3></div>
-            <div id="marketTabs" class="market-tabs"></div>
+        <details class="panel-block market-details">
+          <summary>
+            <div><span class="kicker">Pełna analiza</span><h3>Pokaż wszystkie rynki i progi</h3></div>
+            <span class="details-hint">Rozwiń →</span>
+          </summary>
+          <div class="details-body">
+            <div class="block-head market-head">
+              <div><span class="kicker">Probability → price</span><h3>Rynki</h3></div>
+              <div id="marketTabs" class="market-tabs"></div>
+            </div>
+            <div class="market-explainer">
+              <div><b>Model P</b> — prawdopodobieństwo z aktywnego modelu; status walidacji widzisz przy rynku.</div>
+              <div><b>Kurs fair</b> — 1 / Model P.</div>
+              <div><b>Kurs bukmachera</b> — najlepsza dostępna cena z feedu.</div>
+              <div><b>P rynku</b> — prawdopodobieństwo po usunięciu marży, jeśli znamy komplet rynku.</div>
+              <div><b>Edge</b> — Model P minus P rynku.</div>
+              <div><b>EV</b> — oczekiwana stopa zwrotu przy danym kursie.</div>
+            </div>
+            <div class="table-wrap">
+              <table class="market-table">
+                <thead><tr><th>Rynek / model</th><th>Model P</th><th>Kurs fair</th><th>Bukmacher</th><th>Kurs</th><th>P rynku</th><th>Edge</th><th>EV</th><th>Decyzja</th></tr></thead>
+                <tbody id="marketRows"></tbody>
+              </table>
+            </div>
           </div>
-          <div class="market-explainer">
-            <div><b>Model P</b> — nasze prawdopodobieństwo.</div>
-            <div><b>Kurs fair</b> — 1 / Model P.</div>
-            <div><b>Kurs bukmachera</b> — realna cena z feedu.</div>
-            <div><b>P rynku</b> — prawdopodobieństwo po usunięciu marży, jeśli mamy obie strony rynku.</div>
-            <div><b>Edge</b> — Model P minus P rynku.</div>
-            <div><b>EV</b> — oczekiwany zwrot przy danym kursie.</div>
-          </div>
-          <div class="table-wrap">
-            <table class="market-table">
-              <thead><tr><th>Rynek</th><th>Model P</th><th>Kurs fair</th><th>Bukmacher</th><th>Kurs</th><th>P rynku</th><th>Edge</th><th>EV</th><th>Decyzja</th></tr></thead>
-              <tbody id="marketRows"></tbody>
-            </table>
-          </div>
-        </div>
+        </details>
 
         <div class="two-col">
           <div class="panel-block">

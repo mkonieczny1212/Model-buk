@@ -5,58 +5,61 @@ import unicodedata
 from difflib import SequenceMatcher
 
 
-ALIASES: dict[str, str] = {
+# Cross-provider name variants. A provider can use different canonical names for
+# the same club, so each input alias may resolve to more than one candidate form.
+ALIAS_VARIANTS: dict[str, tuple[str, ...]] = {
     # England
-    "manchester city": "Man City",
-    "man city": "Man City",
-    "manchester united": "Man United",
-    "man united": "Man United",
-    "nottingham forest": "Nottm Forest",
-    "nott'm forest": "Nottm Forest",
-    "afc bournemouth": "Bournemouth",
-    "brighton & hove albion": "Brighton",
-    "wolverhampton wanderers": "Wolves",
+    "manchester city": ("Man City", "Manchester City"),
+    "man city": ("Man City", "Manchester City"),
+    "manchester united": ("Man United", "Manchester United"),
+    "man united": ("Man United", "Manchester United"),
+    "nottingham forest": ("Nottm Forest", "Nottingham Forest"),
+    "nott'm forest": ("Nottm Forest", "Nottingham Forest"),
+    "afc bournemouth": ("Bournemouth", "AFC Bournemouth"),
+    "brighton & hove albion": ("Brighton", "Brighton & Hove Albion"),
+    "wolverhampton wanderers": ("Wolves", "Wolverhampton Wanderers"),
     # Spain
-    "atletico madrid": "Ath Madrid",
-    "atl. madrid": "Ath Madrid",
-    "athletic club": "Ath Bilbao",
-    "athletic bilbao": "Ath Bilbao",
-    "real betis": "Betis",
-    "real sociedad": "Sociedad",
-    "rayo vallecano": "Vallecano",
+    "atletico madrid": ("Ath Madrid", "Atletico Madrid"),
+    "atl. madrid": ("Ath Madrid", "Atletico Madrid"),
+    "athletic club": ("Ath Bilbao", "Athletic Club", "Athletic Bilbao"),
+    "athletic bilbao": ("Ath Bilbao", "Athletic Club", "Athletic Bilbao"),
+    "ath bilbao": ("Ath Bilbao", "Athletic Club", "Athletic Bilbao"),
+    "real betis": ("Betis", "Real Betis"),
+    "real sociedad": ("Sociedad", "Real Sociedad"),
+    "rayo vallecano": ("Vallecano", "Rayo Vallecano"),
     # Germany
-    "bayern munich": "Bayern Munich",
-    "borussia dortmund": "Dortmund",
-    "borussia monchengladbach": "MGladbach",
-    "borussia m'gladbach": "MGladbach",
-    "eintracht frankfurt": "Ein Frankfurt",
-    "bayer leverkusen": "Leverkusen",
-    "1. fc koln": "FC Koln",
-    "rb leipzig": "RB Leipzig",
+    "bayern munich": ("Bayern Munich", "Bayern München"),
+    "borussia dortmund": ("Dortmund", "Borussia Dortmund"),
+    "borussia monchengladbach": ("MGladbach", "Borussia M'gladbach", "Borussia Monchengladbach"),
+    "borussia m'gladbach": ("MGladbach", "Borussia M'gladbach", "Borussia Monchengladbach"),
+    "eintracht frankfurt": ("Ein Frankfurt", "Eintracht Frankfurt"),
+    "bayer leverkusen": ("Leverkusen", "Bayer Leverkusen"),
+    "1. fc koln": ("FC Koln", "FC Köln", "1. FC Koln"),
+    "rb leipzig": ("RB Leipzig",),
     # Italy
-    "ac milan": "Milan",
-    "as roma": "Roma",
-    "inter milan": "Inter",
-    "internazionale": "Inter",
+    "ac milan": ("Milan", "AC Milan"),
+    "as roma": ("Roma", "AS Roma"),
+    "inter milan": ("Inter", "Inter Milan", "Internazionale"),
+    "internazionale": ("Inter", "Inter Milan", "Internazionale"),
     # France
-    "paris saint germain": "Paris SG",
-    "paris saint-germain": "Paris SG",
-    "psg": "Paris SG",
+    "paris saint germain": ("Paris SG", "Paris Saint Germain", "Paris Saint-Germain"),
+    "paris saint-germain": ("Paris SG", "Paris Saint Germain", "Paris Saint-Germain"),
+    "psg": ("Paris SG", "Paris Saint Germain", "Paris Saint-Germain"),
     # Poland
-    "lech poznan": "Lech Poznan",
-    "legia warszawa": "Legia",
-    "jagiellonia bialystok": "Jagiellonia",
-    "pogon szczecin": "Pogon Szczecin",
-    "gornik zabrze": "Gornik Zabrze",
-    "rakow czestochowa": "Rakow",
-    "lechia gdansk": "Lechia Gdansk",
-    "gks katowice": "GKS Katowice",
-    "widzew lodz": "Widzew Lodz",
-    "korona kielce": "Korona Kielce",
-    "piast gliwice": "Piast Gliwice",
-    "radomiak radom": "Radomiak Radom",
-    "motor lublin": "Motor Lublin",
-    "wisla plock": "Wisla Plock",
+    "lech poznan": ("Lech Poznan", "Lech Poznań"),
+    "legia warszawa": ("Legia", "Legia Warszawa"),
+    "jagiellonia bialystok": ("Jagiellonia", "Jagiellonia Bialystok", "Jagiellonia Białystok"),
+    "pogon szczecin": ("Pogon Szczecin", "Pogoń Szczecin"),
+    "gornik zabrze": ("Gornik Zabrze", "Górnik Zabrze"),
+    "rakow czestochowa": ("Rakow", "Rakow Czestochowa", "Raków Częstochowa"),
+    "lechia gdansk": ("Lechia Gdansk", "Lechia Gdańsk"),
+    "gks katowice": ("GKS Katowice",),
+    "widzew lodz": ("Widzew Lodz", "Widzew Łódź"),
+    "korona kielce": ("Korona Kielce",),
+    "piast gliwice": ("Piast Gliwice",),
+    "radomiak radom": ("Radomiak Radom",),
+    "motor lublin": ("Motor Lublin",),
+    "wisla plock": ("Wisla Plock", "Wisła Płock"),
 }
 
 
@@ -69,20 +72,43 @@ def normalize_name(value: str) -> str:
 
 
 def resolve_team_name(name: str, candidates: list[str]) -> tuple[str | None, float]:
+    """Resolve one provider name against another provider's candidate set.
+
+    Exact matches win first. Then known cross-provider variants are tried. Only
+    after that do we use fuzzy matching. This avoids cases like API-Football's
+    "Athletic Bilbao" being forced to football-data's "Ath Bilbao" when the
+    target provider actually calls the same club "Athletic Club".
+    """
     raw = str(name).strip()
-    alias = ALIASES.get(normalize_name(raw))
-    if alias and alias in candidates:
-        return alias, 1.0
     if raw in candidates:
         return raw, 1.0
 
     target = normalize_name(raw)
     if not target:
         return None, 0.0
+
+    variants = ALIAS_VARIANTS.get(target, ())
+    for variant in variants:
+        if variant in candidates:
+            return variant, 1.0
+
+    candidate_norm = {normalize_name(c): c for c in candidates}
+    if target in candidate_norm:
+        return candidate_norm[target], 1.0
+    for variant in variants:
+        norm = normalize_name(variant)
+        if norm in candidate_norm:
+            return candidate_norm[norm], 1.0
+
+    # Compare both the raw normalized input and all known variants. We retain a
+    # conservative threshold; uncertain entity matches must fail rather than feed
+    # the wrong club into a predictive model.
+    query_forms = [target] + [normalize_name(v) for v in variants]
     best_name: str | None = None
     best_score = 0.0
     for candidate in candidates:
-        score = SequenceMatcher(None, target, normalize_name(candidate)).ratio()
+        cand = normalize_name(candidate)
+        score = max(SequenceMatcher(None, q, cand).ratio() for q in query_forms)
         if score > best_score:
             best_name, best_score = candidate, score
     if best_score >= 0.72:

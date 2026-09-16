@@ -123,6 +123,69 @@ class ApiFootballClient:
                 items.append(self._normalize_fixture(row, code))
         return sorted(items, key=lambda x: x.get("kickoff") or "")
 
+    def current_season(self, league_code: str) -> int:
+        """Resolve the provider-declared current season for a competition.
+
+        We ask /leagues?current=true instead of assuming calendar-year semantics.
+        A deterministic calendar fallback is kept only for temporary provider
+        failures and is never used to invent a roster.
+        """
+        if league_code not in LEAGUES:
+            raise ValueError(f"Unsupported league: {league_code}")
+        spec = LEAGUES[league_code]
+        try:
+            payload = self._get(
+                "/leagues",
+                {"id": spec.api_football_id, "current": "true"},
+                ttl=60 * 60 * 12,
+            )
+            rows = payload.get("response", [])
+            if rows:
+                seasons = rows[0].get("seasons") or []
+                current = [x for x in seasons if x.get("current") is True]
+                if current:
+                    return int(current[-1]["year"])
+        except Exception:
+            pass
+        now = datetime.now(timezone.utc)
+        return season_for_date(now.year, now.month, spec.default_season_start_month)
+
+    def teams_for_league(self, league_code: str, season: int | None = None) -> list[dict[str, Any]]:
+        """Return only teams registered in the selected competition/season.
+
+        This is the source of truth for the UI team selector. Historical clubs
+        are deliberately not mixed into the current-season roster.
+        """
+        if league_code not in LEAGUES:
+            raise ValueError(f"Unsupported league: {league_code}")
+        spec = LEAGUES[league_code]
+        season = int(season if season is not None else self.current_season(league_code))
+        payload = self._get(
+            "/teams",
+            {"league": spec.api_football_id, "season": season},
+            ttl=60 * 60 * 24,
+        )
+        output: list[dict[str, Any]] = []
+        for row in payload.get("response", []):
+            team = row.get("team") or {}
+            venue = row.get("venue") or {}
+            if not team.get("id") or not team.get("name"):
+                continue
+            output.append({
+                "id": int(team["id"]),
+                "name": str(team["name"]),
+                "code": team.get("code"),
+                "country": team.get("country"),
+                "logo": team.get("logo"),
+                "venue": {
+                    "id": venue.get("id"), "name": venue.get("name"),
+                    "city": venue.get("city"),
+                },
+                "league_code": league_code,
+                "season": season,
+            })
+        return sorted(output, key=lambda x: x["name"])
+
     def fixture(self, fixture_id: int) -> dict[str, Any]:
         payload = self._get("/fixtures", {"id": fixture_id}, ttl=60)
         rows = payload.get("response", [])
@@ -167,6 +230,23 @@ class ApiFootballClient:
             "referee": fixture.get("referee"),
             "venue": {"id": venue.get("id"), "name": venue.get("name"), "city": venue.get("city")},
         }
+
+
+    def league_coverage(self, league_id: int, season: int) -> dict[str, Any]:
+        """Return provider-declared coverage for this league-season.
+
+        Coverage flags are advisory: API-Football documents that a true flag does
+        not guarantee every field for every individual fixture. Keeping the raw
+        object lets the UI distinguish provider capability from actual response
+        completeness.
+        """
+        payload = self._get("/leagues", {"id": league_id, "season": season}, ttl=60 * 60 * 24)
+        rows = payload.get("response", [])
+        if not rows:
+            return {}
+        seasons = rows[0].get("seasons") or []
+        target = next((x for x in seasons if int(x.get("year") or -1) == int(season)), None)
+        return (target or {}).get("coverage") or {}
 
     def injuries(self, fixture_id: int) -> list[dict[str, Any]]:
         payload = self._get("/injuries", {"fixture": fixture_id}, ttl=60 * 60)
@@ -239,8 +319,19 @@ class ApiFootballClient:
             "note": "External benchmark only — never used as a PURE Model Buk feature.",
         }
 
-    def recent_fixtures(self, team_id: int, last: int = 6) -> list[dict[str, Any]]:
-        payload = self._get("/fixtures", {"team": team_id, "last": last}, ttl=60 * 30)
+    def recent_fixtures(
+        self,
+        team_id: int,
+        last: int = 6,
+        league_id: int | None = None,
+        season: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"team": team_id, "last": last}
+        if league_id is not None:
+            params["league"] = int(league_id)
+        if season is not None:
+            params["season"] = int(season)
+        payload = self._get("/fixtures", params, ttl=60 * 30)
         output = []
         for row in payload.get("response", []):
             league_id = int((row.get("league") or {}).get("id") or 0)
@@ -252,19 +343,31 @@ class ApiFootballClient:
         payload = self._get("/fixtures/statistics", {"fixture": fixture_id}, ttl=60 * 60 * 24 * 7)
         output: dict[int, dict[str, float]] = {}
         mapping = {
-            "Shots on Goal": "sot",
-            "Total Shots": "shots",
-            "Corner Kicks": "corners",
-            "Yellow Cards": "yellow",
-            "Red Cards": "red",
-            "Fouls": "fouls",
-            "Ball Possession": "possession",
+            "shots on goal": "sot",
+            "shots off goal": "shots_off",
+            "total shots": "shots",
+            "blocked shots": "blocked_shots",
+            "shots insidebox": "shots_inside_box",
+            "shots outsidebox": "shots_outside_box",
+            "corner kicks": "corners",
+            "yellow cards": "yellow",
+            "red cards": "red",
+            "fouls": "fouls",
+            "ball possession": "possession",
+            "offsides": "offsides",
+            "goalkeeper saves": "saves",
+            "total passes": "passes",
+            "passes accurate": "passes_accurate",
+            "passes %": "passes_pct",
+            "expected_goals": "xg",
+            "expected goals": "xg",
         }
         for row in payload.get("response", []):
             team_id = int((row.get("team") or {}).get("id") or 0)
             stats: dict[str, float] = {}
             for item in row.get("statistics") or []:
-                key = mapping.get(item.get("type"))
+                stat_type = str(item.get("type") or "").strip().lower()
+                key = mapping.get(stat_type)
                 if not key:
                     continue
                 value = item.get("value")
@@ -278,13 +381,20 @@ class ApiFootballClient:
                 output[team_id] = stats
         return output
 
-    def current_observations(self, team_id: int, last: int = 5, max_stat_calls: int = 5) -> list[dict[str, Any]]:
+    def current_observations(
+        self,
+        team_id: int,
+        last: int = 6,
+        max_stat_calls: int = 6,
+        league_id: int | None = None,
+        season: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Fetch recent completed matches and their event counts on demand.
 
         Cost control: fixture list is one call; detailed statistics are capped and
         cached, so dashboard scanning never performs this work automatically.
         """
-        fixtures = self.recent_fixtures(team_id, last=last)
+        fixtures = self.recent_fixtures(team_id, last=last, league_id=league_id, season=season)
         output: list[dict[str, Any]] = []
         detailed_calls = 0
         for fixture in fixtures:
@@ -313,6 +423,14 @@ class ApiFootballClient:
                         "corners_for": own.get("corners"), "corners_against": opp.get("corners"),
                         "cards_for": (own.get("yellow", 0) or 0) + 2 * (own.get("red", 0) or 0),
                         "cards_against": (opp.get("yellow", 0) or 0) + 2 * (opp.get("red", 0) or 0),
+                        "xg_for": own.get("xg"), "xg_against": opp.get("xg"),
+                        "possession_for": own.get("possession"), "possession_against": opp.get("possession"),
+                        "blocked_shots_for": own.get("blocked_shots"), "blocked_shots_against": opp.get("blocked_shots"),
+                        "shots_inside_box_for": own.get("shots_inside_box"), "shots_inside_box_against": opp.get("shots_inside_box"),
+                        "passes_for": own.get("passes"), "passes_against": opp.get("passes"),
+                        "passes_accurate_for": own.get("passes_accurate"), "passes_accurate_against": opp.get("passes_accurate"),
+                        "offsides_for": own.get("offsides"), "offsides_against": opp.get("offsides"),
+                        "saves_for": own.get("saves"), "saves_against": opp.get("saves"),
                     })
                     detailed_calls += 1
                 except Exception:
@@ -326,8 +444,15 @@ class ApiFootballClient:
         lineups: list[dict[str, Any]] = []
         odds: list[dict[str, Any]] = []
         benchmark = None
+        coverage: dict[str, Any] = {}
         current: dict[str, list[dict[str, Any]]] = {"home": [], "away": []}
         errors: list[str] = []
+
+        try:
+            if fixture.get("league_id") and fixture.get("season"):
+                coverage = self.league_coverage(int(fixture["league_id"]), int(fixture["season"]))
+        except Exception as exc:
+            errors.append(f"coverage: {exc}")
 
         for label, fn in (
             ("injuries", lambda: self.injuries(fixture_id)),
@@ -347,7 +472,13 @@ class ApiFootballClient:
         if deep:
             for side in ("home", "away"):
                 try:
-                    current[side] = self.current_observations(int(fixture[side]["id"]), last=6, max_stat_calls=5)
+                    current[side] = self.current_observations(
+                        int(fixture[side]["id"]),
+                        last=8,
+                        max_stat_calls=6,
+                        league_id=int(fixture["league_id"]) if fixture.get("league_id") else None,
+                        season=int(fixture["season"]) if fixture.get("season") else None,
+                    )
                 except Exception as exc:
                     errors.append(f"recent_{side}: {exc}")
 
@@ -359,6 +490,7 @@ class ApiFootballClient:
             "external_prediction_benchmark": benchmark,
             "recent_observations": current,
             "errors": errors,
+            "coverage": coverage,
             "provider": self.status(),
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
