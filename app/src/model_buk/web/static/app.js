@@ -3,7 +3,7 @@ const pct = x => x === null || x === undefined ? '—' : `${(Number(x) * 100).to
 const odd = x => x === null || x === undefined ? '—' : Number(x).toFixed(2);
 const num = x => x === null || x === undefined ? '—' : Number(x).toFixed(2);
 const pp = x => x === null || x === undefined ? '—' : `${(Number(x) * 100).toFixed(1)} pp`;
-const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 let state = {status:null, leagues:[], selectedLeagues:new Set(), analysis:null, marketGroup:'goals'};
 
@@ -28,8 +28,12 @@ async function loadStatus() {
   try {
     const s = await api('/api/status'); state.status=s;
     const live = s.live_provider || {};
+    const secondary = s.secondary_providers || {};
+    const fs = secondary.footystats || {};
+    const sm = secondary.sportmonks || {};
     const chip=$('providerChip');
-    chip.textContent = live.connected ? `LIVE: ${live.name}` : 'LIVE DATA: niepodłączone';
+    const extras = [`FS ${fs.connected?'✓':'—'}`, `SM ${sm.connected?'✓':'—'}`].join(' · ');
+    chip.textContent = live.connected ? `LIVE: ${live.name} · ${extras}` : `LIVE DATA: niepodłączone · ${extras}`;
     chip.className = `status-chip ${live.connected?'ok':'warn'}`;
     const stats = [
       ['Wersja', s.app_version || 'v0.6'],
