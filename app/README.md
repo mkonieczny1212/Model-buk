@@ -1,4 +1,4 @@
-# Model Buk v0.6.1 — Dynamic Match Analysis
+# Model Buk v0.6.2 — Dynamic Match Analysis
 
 Model Buk is a reproducible football probability + market-value research engine. v0.6 begins replacing historical-rate baselines with learned dynamic team-state models and makes data gaps explicit instead of inventing missing inputs.
 
@@ -71,7 +71,7 @@ Default decision gate remains research-only and requires both positive probabili
 1. Unzip the full project.
 2. Double-click `URUCHOM_MODEL_BUK.bat`.
 3. First launch may take a few minutes while Python packages are installed.
-4. The browser opens automatically at `http://127.0.0.1:8010/?v=061`.
+4. The browser opens automatically at `http://127.0.0.1:8010/?v=062`.
 
 ### Enable live data
 
@@ -145,7 +145,7 @@ The trained v0.1/v0.2 EPL Corner Engine is kept as a **separate historical bench
 
 ## Current status
 
-**Research / paper betting only.** v0.6.1 is a substantially more complete application and data pipeline, not proof of durable profitability. The next research priority is validating the broad engines league-by-league and building quantified player/lineup strength so current injuries and confirmed XI can enter probabilities without subjective weights.
+**Research / paper betting only.** v0.6.2 is a substantially more complete application and data pipeline, not proof of durable profitability. The next research priority is validating the broad engines league-by-league and building quantified player/lineup strength so current injuries and confirmed XI can enter probabilities without subjective weights.
 
 
 ## v0.6 research checkpoint
@@ -168,3 +168,13 @@ The trained v0.1/v0.2 EPL Corner Engine is kept as a **separate historical bench
 - The Top 5 panel no longer looks empty when the model has probabilities but the odds feed has no comparable market: it shows `MODEL ONLY` forecasts and keeps value/BET status separate.
 - Research-grade positive edge can be shown as `RESEARCH`; `BET` remains restricted to fully eligible models.
 - Data-source gap plan: `docs/DATA_SOURCE_PLAN_V07.md`.
+
+
+## v0.6.2 secondary data providers
+
+Model Buk can now be configured with two additional providers without placing secrets in source code:
+
+- `FOOTYSTATS_API_KEY` — current-season team/xG/process reconciliation. In v0.6.2 this is **reconciliation/context only**, not a probability input.
+- `SPORTMONKS_API_TOKEN` — xG/advanced fixture/expected-lineup coverage audit. Provider fixture IDs are not silently mixed with API-Football IDs.
+
+Run `USTAW_DODATKOWE_API.bat`, enter the keys locally, restart the app, and check `/api/status`. API keys are never included in GitHub or the distributed ZIP.
