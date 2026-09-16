@@ -1,7 +1,10 @@
-MODEL BUK v0.6.1 — WERSJA NA PORCIE 8010
+MODEL BUK v0.6.2 — WERSJA NA PORCIE 8010
 
 1. Rozpakuj cały folder.
 2. Kliknij URUCHOM_MODEL_BUK.bat.
-3. Otworzy się http://127.0.0.1:8010/?v=061
+3. Otworzy się http://127.0.0.1:8010/?v=062
 
-Ta wersja celowo NIE używa portu 8000, aby ominąć starą wersję aplikacji.
+API-Football ustawiasz plikiem USTAW_API_FOOTBALL.bat.
+FootyStats / Sportmonks ustawiasz plikiem USTAW_DODATKOWE_API.bat.
+
+Ta wersja celowo NIE używa portu 8000, aby ominąć stare lokalne wersje aplikacji.
