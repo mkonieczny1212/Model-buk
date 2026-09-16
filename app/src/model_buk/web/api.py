@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from model_buk.web.service import MatchAnalysisService, PredictionService, ServicePaths
+from model_buk.web.service import PredictionService, ServicePaths
+from model_buk.web.service_v062 import MatchAnalysisService
 from model_buk.web.storage import PredictionStore
 
 
@@ -66,7 +67,7 @@ def create_app(
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.6.1",
+        version="0.6.2",
         description="Multi-league, multi-market football probability + current-context research engine.",
     )
 
