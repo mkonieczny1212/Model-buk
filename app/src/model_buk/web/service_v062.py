@@ -49,6 +49,10 @@ class MatchAnalysisService(BaseMatchAnalysisService):
         away_name = fixture.get("away_team") or ""
 
         current = analysis.setdefault("current_context", {})
+        # Some development builds already decorate the base service directly.
+        # In that case do not duplicate secondary-provider requests.
+        if current.get("secondary_reconciliation"):
+            return analysis
         secondary: dict[str, Any] = {}
         if deep and self.footystats.connected and league_code in LEAGUES:
             try:
