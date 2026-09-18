@@ -1,3 +1,48 @@
+# Model BUK 0.7.0
+
+Analiza przedmeczowa oparta na danych sportowych, bez kursów jako wejścia modelu.
+UEFA nie jest już automatycznie blokowana: każdy rynek jest liczony z dostępnych
+obserwacji obu drużyn. Brak statystyki nie jest zastępowany zerem.
+
+## Uruchomienie Windows
+
+1. Użyj Python 3.12. Rozpakuj całe wydanie do nowego folderu.
+2. Uruchom `URUCHOM_MODEL_BUK.bat`; aplikacja otworzy port 8010.
+3. Klucze skonfiguruj lokalnie istniejącymi plikami `USTAW_*.bat`.
+4. Klucz API i dostęp do danych to osobne rzeczy: plan Free API-Football odmawia
+   ostatnich meczów i sezonu 2026. Interfejs pokazuje taki błąd wprost.
+
+Instalacja ręczna: `python -m venv .venv`, następnie
+`.venv\Scripts\python -m pip install -r requirements-lock.txt` i
+`.venv\Scripts\python -m pip install --no-deps -e .`.
+Weryfikacja artefaktów: `python scripts/artifact_manifest.py`.
+Testy: `python -m pytest -q`.
+
+## Model i rekomendacje
+
+Model live Gamma–Poisson opisuje produkcję drużyny i dopuszczanie przeciwnika,
+z ważeniem czasu i słabym priorem historycznym. HGB/xG po poprawionym treningu
+jest dodatkowym modelem porównawczym. Ich wyniki pozostają badawcze.
+Najbardziej prawdopodobne zdarzenie nie musi mieć korzystnego kursu.
+NO BET nie usuwa prawdopodobieństwa z ekranu.
+
+Dokładne założenia, ograniczenia i lista napraw:
+[V07_ZALOZENIA_I_ZMIANY.md](docs/V07_ZALOZENIA_I_ZMIANY.md).
+
+Aktualizacja Understat: `python scripts/refresh_understat.py --seasons 2026`.
+Po zmianach danych i modeli odtwórz manifest: `python scripts/artifact_manifest.py --write`.
+Domyślny limit statystyk API to 12 spotkań na drużynę; zmienna
+`MODEL_BUK_MAX_STAT_CALLS` steruje kosztem pojedynczej analizy.
+
+Pakiet ZIP zawiera dane i modele; sam patch Git nie zawiera dużych CSV ani plików
+joblib. Rozliczenia paper trading/CLV oraz pełna walidacja UEFA nie są gotowe.
+
+---
+
+## Dokumentacja wcześniejszej wersji (historyczna)
+
+Poniższy opis zachowano dla kontekstu. W razie różnic obowiązuje opis 0.7 powyżej.
+
 # Model Buk v0.6.2 — Dynamic Match Analysis
 
 Model Buk is a reproducible football probability + market-value research engine. v0.6 begins replacing historical-rate baselines with learned dynamic team-state models and makes data gaps explicit instead of inventing missing inputs.
@@ -178,3 +223,4 @@ Model Buk can now be configured with two additional providers without placing se
 - `SPORTMONKS_API_TOKEN` — xG/advanced fixture/expected-lineup coverage audit. Provider fixture IDs are not silently mixed with API-Football IDs.
 
 Run `USTAW_DODATKOWE_API.bat`, enter the keys locally, restart the app, and check `/api/status`. API keys are never included in GitHub or the distributed ZIP.
+

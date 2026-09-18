@@ -1,10 +1,8 @@
-MODEL BUK v0.6.2 — WERSJA NA PORCIE 8010
+MODEL BUK 0.7.0
 
-1. Rozpakuj cały folder.
-2. Kliknij URUCHOM_MODEL_BUK.bat.
-3. Otworzy się http://127.0.0.1:8010/?v=062
+Rozpakuj do NOWEGO folderu. Python 3.12.
+Uruchom URUCHOM_MODEL_BUK.bat; port 8010.
+Nie kopiuj starego .venv. Szczegoly: README.md i docs/V07_ZALOZENIA_I_ZMIANY.md.
 
-API-Football ustawiasz plikiem USTAW_API_FOOTBALL.bat.
-FootyStats / Sportmonks ustawiasz plikiem USTAW_DODATKOWE_API.bat.
-
-Ta wersja celowo NIE używa portu 8000, aby ominąć stare lokalne wersje aplikacji.
+Klucz API ustaw lokalnie. Plan Free API-Football nie udostepnia ostatnich meczow ani sezonu 2026.
+Prognozy bez dostepnych statystyk nie sa fabrykowane. NO BET to decyzja o kursie i walidacji, nie brak obliczen.

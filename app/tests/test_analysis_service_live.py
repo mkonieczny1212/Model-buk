@@ -14,6 +14,8 @@ class FakeProvider:
         ]
         home_obs = [{"goals_for": 3, "goals_against": 1, "shots_for": 17, "shots_against": 9, "sot_for": 7, "sot_against": 3, "corners_for": 7, "corners_against": 4, "cards_for": 2, "cards_against": 2}] * 5
         away_obs = [{"goals_for": 1, "goals_against": 2, "shots_for": 10, "shots_against": 15, "sot_for": 3, "sot_against": 5, "corners_for": 4, "corners_against": 6, "cards_for": 2, "cards_against": 3}] * 5
+        home_obs = [{**r, "date": f"2026-09-{i+1:02d}T15:00:00Z", "fixture_id": i+1} for i,r in enumerate(home_obs)]
+        away_obs = [{**r, "date": f"2026-09-{i+1:02d}T15:00:00Z", "fixture_id": i+11} for i,r in enumerate(away_obs)]
         return {
             "fixture": {
                 "fixture_id": fixture_id, "kickoff": "2026-09-15T20:00:00+00:00", "league_code": "EPL", "league_name": "Premier League",
@@ -42,4 +44,6 @@ def test_live_analysis_uses_current_observations_and_odds(tmp_path: Path):
     assert result["raw_odds_count"] == 2
     assert result["market_comparison"]
     assert any(f["key"] == "injuries" for f in result["factors"])
-    assert result["confidence"]["score"] > result["data_quality"]["score"]
+    assert result["confidence"]["calibrated"] is False
+    assert result["confidence"]["score"] == result["data_quality"]["score"]
+

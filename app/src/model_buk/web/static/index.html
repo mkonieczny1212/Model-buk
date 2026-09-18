@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Model Buk v0.6.2</title>
+  <title>Model Buk v0.7.0</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -28,9 +28,9 @@
     <main class="content">
       <header class="topbar">
         <div>
-          <div class="eyebrow">MODEL BUK · v0.6.2</div>
+          <div class="eyebrow">MODEL BUK · v0.7.0</div>
           <h1>Match Analysis Dashboard</h1>
-          <p>Dynamiczny team state, bieżący kontekst, walidowane modele i czytelny ranking value.</p>
+          <p>Bieżące i historyczne dane, prawdopodobieństwa oraz jawne warunki BET / NO BET.</p>
         </div>
         <div id="providerChip" class="status-chip">Ładowanie…</div>
       </header>
@@ -55,7 +55,7 @@
           <div>
             <span class="kicker">Analiza ręczna</span>
             <h3>Wybierz dowolny mecz z obsługiwanej ligi</h3>
-            <p>Analiza ręczna jest dostępna tylko tam, gdzie mamy lokalną historię. Dla rozgrywek europejskich używaj bieżących fixture z API. Model nie udaje brakujących danych: niewalidowane rynki są oznaczane jako RESEARCH.</p>
+            <p>Analiza ręczna jest dostępna tylko tam, gdzie mamy lokalną historię. Dla rozgrywek europejskich używaj bieżących fixture z API. Przy prognozach pokazujemy stan danych i walidacji; niespełnione warunki zakładu oznaczamy NO BET.</p>
           </div>
           <form id="manualForm" class="manual-form">
             <label>Liga<select id="manualLeague"></select></label>
@@ -76,7 +76,7 @@
             <div id="analysisMeta" class="muted">—</div>
           </div>
           <div class="hero-badges">
-            <div class="confidence"><span>Confidence</span><strong id="confidenceScore">—</strong><small id="confidenceLabel"></small></div>
+            <div class="confidence"><span>Pokrycie rynków danymi</span><strong id="confidenceScore">—</strong><small id="confidenceLabel"></small></div>
             <div id="analysisMode" class="pill">—</div>
           </div>
         </div>
@@ -93,15 +93,16 @@
 
         <div class="panel-block primary-opportunities">
           <div class="block-head">
-            <div><span class="kicker">Opportunity Ranker</span><h3>Top 5 dla tego meczu</h3></div>
-            <span class="help-text">Najpierw pokazujemy dodatni edge/EV przy dostępnych kursach. Jeśli feed nie ma porównywalnej ceny, pokazujemy MODEL ONLY — czystą prognozę bez udawania value. RESEARCH nie jest rekomendacją BET.</span>
+            <div><span class="kicker">Ranking prawdopodobieństwa</span><h3>Najlepsze propozycje dla tego meczu</h3></div>
+            <span class="help-text">Najbardziej prawdopodobne zdarzenia z różnych rodzin rynków. Wysokie prawdopodobieństwo nie oznacza opłacalnego zakładu. BET wymaga walidacji, aktualnego kursu i dodatniej wartości po uwzględnieniu niepewności. Typy z jednego meczu mogą być skorelowane.</span>
           </div>
+          <p id="recommendationSummary" class="muted"></p>
           <div id="opportunityList" class="opportunity-grid"></div>
         </div>
 
         <details class="panel-block market-details">
           <summary>
-            <div><span class="kicker">Pełna analiza</span><h3>Pokaż wszystkie rynki i progi</h3></div>
+            <div><span class="kicker">Pełna analiza</span><h3>Pokaż wszystkie rynki i progi</h3><span id="marketCount" class="muted"></span></div>
             <span class="details-hint">Rozwiń →</span>
           </summary>
           <div class="details-body">
@@ -115,11 +116,11 @@
               <div><b>Kurs bukmachera</b> — najlepsza dostępna cena z feedu.</div>
               <div><b>P rynku</b> — prawdopodobieństwo po usunięciu marży, jeśli znamy komplet rynku.</div>
               <div><b>Edge</b> — Model P minus P rynku.</div>
-              <div><b>EV</b> — oczekiwana stopa zwrotu przy danym kursie.</div>
+              <div><b>EV netto</b> — oczekiwana stopa zwrotu po skonfigurowanych kosztach. Domyślnie koszty wynoszą zero; zasady operatora należy skonfigurować przed użyciem zakładu.</div>
             </div>
             <div class="table-wrap">
               <table class="market-table">
-                <thead><tr><th>Rynek / model</th><th>Model P</th><th>Kurs fair</th><th>Bukmacher</th><th>Kurs</th><th>P rynku</th><th>Edge</th><th>EV</th><th>Decyzja</th></tr></thead>
+                <thead><tr><th>Rynek / model</th><th>Model P</th><th>Kurs fair</th><th>Bukmacher</th><th>Kurs</th><th>P rynku</th><th>Edge</th><th>EV netto</th><th>Decyzja</th></tr></thead>
                 <tbody id="marketRows"></tbody>
               </table>
             </div>
@@ -164,3 +165,4 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
+

@@ -13,7 +13,9 @@ from typing import Any
 
 import requests
 
-from model_buk.catalog import LEAGUES
+from model_buk.catalog import LEAGUES, season_for_date
+from model_buk.security import safe_error
+from model_buk.team_names import resolve_team_name
 
 
 FOOTYSTATS_BASE = "https://api.football-data-api.com"
@@ -114,11 +116,14 @@ class FootyStatsClient:
         cached = self.cache.get(key, ttl)
         if cached is not None:
             return cached
-        response = self._session.get(FOOTYSTATS_BASE + endpoint, params=params, timeout=self.timeout)
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._session.get(FOOTYSTATS_BASE + endpoint, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(safe_error(exc)) from None
         if payload.get("success") is False:
-            raise RuntimeError(f"FootyStats: {payload.get('message') or payload.get('error') or 'request failed'}")
+            raise RuntimeError("FootyStats rejected the request; check account access and quota")
         self.cache.put(key, payload)
         return payload
 
@@ -135,13 +140,22 @@ class FootyStatsClient:
         if league_code not in LEAGUES:
             return None
         when = when or datetime.now(timezone.utc)
+        target_year = season_for_date(when.year, when.month, LEAGUES[league_code].default_season_start_month)
         target_names = [_norm(x) for x in FOOTYSTATS_NAMES.get(league_code, [LEAGUES[league_code].name])]
         target_country = _norm(LEAGUES[league_code].country)
         best: tuple[float, int] | None = None
         for row in self.league_list(chosen_only=True):
             name = _norm(row.get("name") or row.get("league_name") or row.get("english_name"))
             country = _norm(row.get("country"))
-            score = max((1.0 if t == name else 0.82 if t in name or name in t else 0.0) for t in target_names)
+            if not name or name not in target_names:
+                continue
+            # International competitions use World/Europe depending on provider.
+            allowed_countries = {target_country}
+            if league_code in {"UCL", "UEL", "UECL"}:
+                allowed_countries.update({"europe", "international", "world"})
+            if country not in allowed_countries:
+                continue
+            score = 1.0
             if target_country and country and target_country == country:
                 score += 0.08
             if score < 0.75:
@@ -158,18 +172,7 @@ class FootyStatsClient:
                     year = int(str(year_raw)[:4])
                 except Exception:
                     year = -1
-                if year in {when.year, when.year - 1}:
-                    candidates.append((year, sid))
-            if not candidates and seasons:
-                for season in seasons:
-                    try:
-                        sid = int(season.get("id"))
-                    except Exception:
-                        continue
-                    try:
-                        year = int(str(season.get("year") or season.get("starting_year") or -1)[:4])
-                    except Exception:
-                        year = -1
+                if year == target_year:
                     candidates.append((year, sid))
             if not candidates:
                 continue
@@ -192,21 +195,12 @@ class FootyStatsClient:
         if season_id is None:
             return None
         rows = self.league_teams(season_id, include_stats=True)
-        target = _norm(team_name)
-        best: tuple[float, dict[str, Any]] | None = None
-        for row in rows:
-            name = row.get("name") or row.get("cleanName") or row.get("english_name") or ""
-            norm = _norm(name)
-            score = 1.0 if norm == target else 0.9 if target in norm or norm in target else 0.0
-            if score == 0.0:
-                a, b = set(target.split()), set(norm.split())
-                if a and b:
-                    score = len(a & b) / max(len(a | b), 1)
-            if score >= 0.55 and (best is None or score > best[0]):
-                best = (score, row)
-        if best is None:
+        names = [(row.get("name") or row.get("cleanName") or row.get("english_name") or "", row) for row in rows]
+        resolved, match_score = resolve_team_name(team_name, [name for name, _ in names if name.strip()])
+        matches = [row for name, row in names if name == resolved] if resolved else []
+        if len(matches) != 1:
             return None
-        row = best[1]
+        row = matches[0]
         stats = row.get("stats") if isinstance(row.get("stats"), dict) else row
         wanted = [
             "xg_for_avg_overall", "xg_against_avg_overall", "shotsAVG_overall",
@@ -220,7 +214,7 @@ class FootyStatsClient:
             "season_id": season_id,
             "team_id": row.get("id"),
             "team_name": row.get("name") or row.get("cleanName") or team_name,
-            "name_match": round(best[0], 3),
+            "name_match": round(match_score, 3),
             "stats": extracted,
             "model_usage": "reconciliation_only",
         }
@@ -261,14 +255,17 @@ class SportmonksClient:
         cached = self.cache.get(cache_key, ttl)
         if cached is not None:
             return cached
-        response = self._session.get(
-            SPORTMONKS_BASE + path,
-            params=params,
-            headers={"Authorization": self.api_token},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._session.get(
+                SPORTMONKS_BASE + path,
+                params=params,
+                headers={"Authorization": self.api_token},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(safe_error(exc)) from None
         self.cache.put(cache_key, payload)
         return payload
 

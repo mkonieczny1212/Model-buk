@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
+from scipy.stats import nbinom, poisson
 
 from model_buk.catalog import DIVISION_TO_LEAGUE, LEAGUES, PRIMARY_CODES
 from model_buk.distributions import nb_over_probability, nb_pmf
@@ -59,13 +60,13 @@ class MetricEstimate:
 
 def _clean_frame(frame: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
-    out["MatchDate"] = pd.to_datetime(out["MatchDate"], errors="coerce")
+    out["MatchDate"] = pd.to_datetime(out["MatchDate"], errors="coerce", utc=True).dt.tz_localize(None)
     hy = pd.to_numeric(out.get("HomeYellow"), errors="coerce")
     hr = pd.to_numeric(out.get("HomeRed"), errors="coerce")
     ay = pd.to_numeric(out.get("AwayYellow"), errors="coerce")
     ar = pd.to_numeric(out.get("AwayRed"), errors="coerce")
-    out["HomeCards"] = hy.fillna(0) + 2.0 * hr.fillna(0)
-    out["AwayCards"] = ay.fillna(0) + 2.0 * ar.fillna(0)
+    out["HomeCards"] = hy + 2.0 * hr
+    out["AwayCards"] = ay + 2.0 * ar
     out.loc[hy.isna() & hr.isna(), "HomeCards"] = np.nan
     out.loc[ay.isna() & ar.isna(), "AwayCards"] = np.nan
     for home_col, away_col in METRICS.values():
@@ -108,10 +109,8 @@ def _league_rates(history: pd.DataFrame, metric: str, as_of: pd.Timestamp, lookb
         recent = history[history.MatchDate < as_of].tail(3000)
     h = float(pd.to_numeric(recent[home_col], errors="coerce").mean())
     a = float(pd.to_numeric(recent[away_col], errors="coerce").mean())
-    if not np.isfinite(h):
-        h = 1.0
-    if not np.isfinite(a):
-        a = 1.0
+    if not np.isfinite(h) or not np.isfinite(a):
+        raise ValueError(f"No observed historical {metric} rates")
     return max(h, 0.05), max(a, 0.05), max((h + a) / 2.0, 0.05)
 
 
@@ -232,11 +231,16 @@ def _metric_estimate(history: pd.DataFrame, metric: str, home_team: str, away_te
 
 
 def _convolved_over(home: MetricEstimate, line: float, max_count: int = 80) -> float:
-    hp = nb_pmf(home.expected_home, home.alpha_home, max_count=max_count)
-    ap = nb_pmf(home.expected_away, home.alpha_away, max_count=max_count)
-    total = np.convolve(hp, ap)
     k = int(np.floor(line))
-    return float(total[k + 1 :].sum())
+    support = np.arange(k + 1)
+    hp = _distribution(home.expected_home, home.alpha_home).pmf(support)
+    ap = _distribution(home.expected_away, home.alpha_away).pmf(support)
+    # Exact lower tail: never renormalise a truncated upper tail into certainty.
+    return float(np.clip(1 - np.convolve(hp, ap)[:k + 1].sum(), 0, 1))
+
+
+def _distribution(mu: float, alpha: float):
+    return poisson(mu) if alpha < 1e-6 else nbinom(1 / alpha, 1 / (1 + alpha * mu))
 
 
 def _market_row(key: str, label: str, group: str, line: float | None, side: str, p: float) -> dict[str, Any]:
@@ -279,14 +283,14 @@ def _count_markets(metric: str, estimate: MetricEstimate, home_team: str, away_t
 
 
 def _goal_special_markets(est: MetricEstimate, home_team: str, away_team: str) -> list[dict[str, Any]]:
-    hp = nb_pmf(est.expected_home, est.alpha_home, max_count=12)
-    ap = nb_pmf(est.expected_away, est.alpha_away, max_count=12)
-    matrix = np.outer(hp, ap)
-    p_home = float(np.tril(matrix, k=-1).sum())  # home goals index > away goals index after transpose logic below
-    # np.outer rows=home, cols=away; lower triangle rows>cols = home win.
-    p_draw = float(np.trace(matrix))
-    p_away = float(np.triu(matrix, k=1).sum())
-    p_btts = float(1.0 - hp[0] - ap[0] + hp[0] * ap[0])
+    hd = _distribution(est.expected_home, est.alpha_home)
+    ad = _distribution(est.expected_away, est.alpha_away)
+    support = np.arange(int(min(10000, max(hd.ppf(1-1e-12), ad.ppf(1-1e-12)))) + 1)
+    hp, ap = hd.pmf(support), ad.pmf(support)
+    p_home = float(np.sum(hp * ad.cdf(support - 1)))
+    p_draw = float(np.sum(hp * ap))
+    p_away = float(1 - p_home - p_draw)
+    p_btts = float((1 - hd.pmf(0)) * (1 - ad.pmf(0)))
     return [
         _market_row("result.home", f"{home_team} wygra", "result", None, "home", p_home),
         _market_row("result.draw", "Remis", "result", None, "draw", p_draw),
@@ -331,7 +335,12 @@ class MultiMarketEngine:
 
     def __init__(self, history_path: str | Path):
         self.history_path = Path(history_path)
-        self.history = load_multileague_history(self.history_path)
+        if self.history_path.exists():
+            self.history = load_multileague_history(self.history_path)
+        else:
+            columns = ["MatchDate", "Division", "HomeTeam", "AwayTeam", "HomeElo", "AwayElo"] + [c for pair in METRICS.values() for c in pair]
+            self.history = pd.DataFrame(columns=columns)
+            self.history["MatchDate"] = pd.to_datetime(self.history["MatchDate"])
 
     def leagues(self) -> list[dict[str, Any]]:
         output = []
@@ -386,11 +395,26 @@ class MultiMarketEngine:
         if h == a:
             raise ValueError("Drużyny muszą być różne")
 
-        estimates = {metric: _metric_estimate(league, metric, h, a, when) for metric in METRICS}
+        # Day-resolution history cannot establish intraday result availability.
+        league = league[league.MatchDate < when.normalize()]
+        if league.empty:
+            raise ValueError("Brak historii dostępnej przed datą prognozy")
+        estimates = {}
+        missing = {}
+        for metric, columns in METRICS.items():
+            complete = league[list(columns)].notna().all(axis=1)
+            home_n = int((complete & (league.HomeTeam.eq(h) | league.AwayTeam.eq(h))).sum())
+            away_n = int((complete & (league.HomeTeam.eq(a) | league.AwayTeam.eq(a))).sum())
+            if min(home_n, away_n) < 3:
+                missing[metric] = {"home": None, "away": None, "total": None, "source": "unavailable", "reason": "Brak minimalnej próby tej statystyki dla obu drużyn."}
+                continue
+            estimates[metric] = _metric_estimate(league, metric, h, a, when)
         markets: list[dict[str, Any]] = []
-        markets.extend(_goal_special_markets(estimates["goals"], h, a))
+        if "goals" in estimates:
+            markets.extend(_goal_special_markets(estimates["goals"], h, a))
         for metric in ("goals", "corners", "shots", "sot", "cards"):
-            markets.extend(_count_markets(metric, estimates[metric], h, a))
+            if metric in estimates:
+                markets.extend(_count_markets(metric, estimates[metric], h, a))
 
         h_ppg, h_form = _recent_points(league, h, when)
         a_ppg, a_form = _recent_points(league, a, when)
@@ -448,7 +472,7 @@ class MultiMarketEngine:
 
         history_through = pd.Timestamp(league.MatchDate.max())
         staleness = max(0, int((when.normalize() - history_through.normalize()).days))
-        min_sample = min(estimates["goals"].home_sample, estimates["goals"].away_sample)
+        min_sample = min(estimates["goals"].home_sample, estimates["goals"].away_sample) if "goals" in estimates else 0
         completeness = float(league[[x for pair in METRICS.values() for x in pair]].notna().mean().mean())
         quality = float(np.clip(55 + 20 * min(completeness, 1.0) + 20 * min(min_sample / 30, 1.0) - min(staleness, 180) * 0.08, 20, 98))
 
@@ -469,7 +493,7 @@ class MultiMarketEngine:
                 "historical_metric_completeness": round(completeness, 3),
                 "warning": "Historical baseline is stale for current fixtures until the live provider contributes current-season observations." if staleness > 30 else None,
             },
-            "expected": {
+            "expected": {**missing, **{
                 metric: {
                     "home": round(est.expected_home, 3),
                     "away": round(est.expected_away, 3),
@@ -478,7 +502,7 @@ class MultiMarketEngine:
                     "alpha_away": round(est.alpha_away, 4),
                 }
                 for metric, est in estimates.items()
-            },
+            }},
             "markets": markets,
             "factors": factors,
         }
@@ -491,6 +515,10 @@ def rebuild_markets_from_expected(analysis: dict[str, Any]) -> list[dict[str, An
     away_team = analysis["fixture"]["away_team"]
     estimates: dict[str, MetricEstimate] = {}
     for metric, values in expected.items():
+        if metric not in METRICS or values.get("home") is None or values.get("away") is None:
+            continue
+        if not all(np.isfinite(float(values[k])) and float(values[k]) >= 0 for k in ("home", "away")):
+            continue
         estimates[metric] = MetricEstimate(
             metric=metric,
             expected_home=float(values["home"]),
@@ -508,7 +536,9 @@ def rebuild_markets_from_expected(analysis: dict[str, Any]) -> list[dict[str, An
             source=str(values.get("source", "rebuild")),
         )
     markets: list[dict[str, Any]] = []
-    markets.extend(_goal_special_markets(estimates["goals"], home_team, away_team))
+    if "goals" in estimates:
+        markets.extend(_goal_special_markets(estimates["goals"], home_team, away_team))
     for metric in ("goals", "corners", "shots", "sot", "cards"):
-        markets.extend(_count_markets(metric, estimates[metric], home_team, away_team))
+        if metric in estimates:
+            markets.extend(_count_markets(metric, estimates[metric], home_team, away_team))
     return markets

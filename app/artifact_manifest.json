@@ -1,0 +1,31 @@
+{
+  "app_version": "0.7.0",
+  "source_base_commit": "7bd0be93910905749c7d1f458da51ad06e211d21",
+  "files": {
+    "data/canonical/epl_matches_v01.csv.gz": "5c2c0d59407dd1828e2d1b3b20d851ec885a04b3f096063b6cc83e5547deb844",
+    "data/multileague/europe16_matches_v05.csv.gz": "3a53429866f3bfcec776e0b5c3d5cef351e41e0c5408abee0b2703298b386605",
+    "data/processed/epl_total_corners_v01.csv.gz": "ab6a079e0a3f6233f426c574f110a053ba786618f0e34fb92530ab4006d5a7c4",
+    "data/stadiums_europe.json": "2a145944065cad251975fe3c1ecd63509aa02e053634b2bbfb6b17a8ea935c70",
+    "data/understat/eng_team_match_stats.csv": "aa7d9ba650ea3c836ba559722bfdf8f12b8c4fa1b06d065f1fdf133da48f5a4b",
+    "data/understat/esp_team_match_stats.csv": "4948b18925c2259f48acd2c595e038c0509f4959250a4ba347fb03db90da32f6",
+    "data/understat/fra_team_match_stats.csv": "30a39e1343fa0e4b5103576e86e557883f29730374a02395ac1b0d2953957f2b",
+    "data/understat/ger_team_match_stats.csv": "24ea8cc10e8dffb89f2e666fad318962da2f79fb4e2f4ca0e868dfe88234c439",
+    "data/understat/ita_team_match_stats.csv": "1408f49e851a9c4c7a14d34562796765ed904bd142dc40a616704bcf14bc7854",
+    "data/understat/source_manifest.json": "952266f3214a18b53ffba7836f94a3208edf88e96b4db9de9feb29ec0e49990c",
+    "models/corner_away_v0_2.cbm": "c1544e4ef577381df22c98fefdbcad5b0013286c587ae1d0ebf679eb5766959b",
+    "models/corner_dual_v0_2_metadata.json": "e1180e7054642ce64c72707fc24bb08573b478f3f964a2932d52034335c979d4",
+    "models/corner_home_v0_2.cbm": "f5fae3a2405a9466cb36f3272955d5797e68011cf13f9ff451bb4aa107ea8036",
+    "models/corner_total_v0_1.cbm": "b380cd8c3cb695675d8410064337cb44f2ff2f886be82229cd46e7b208cfd446",
+    "models/goal_v06/away_goals.joblib": "cd4cb530b16ef9938f8a8e45af65f481e1677010bed52099716d888c74392e25",
+    "models/goal_v06/home_goals.joblib": "4098ee54e4e57e200589520b2b28a0aa69fc4c0265dd85242aee30673ec09bd3",
+    "models/goal_v06/metadata.json": "9a889c8c922f95081c0b200d6434348e74634cd8bf9af081ff2e43ab46eb2ff8",
+    "models/live/v01/corner_total_v0_1.cbm": "c2a9e44ac407a82630a8d315c289dd2ed2c888547eefcec20f652f986e4b5e6c",
+    "models/live/v01/metadata.json": "5c1b7108b2d22e5164c2c38601e580758243d9a0625c288b0be9b6f5e5e90d7e",
+    "models/live/v02/corner_away_v0_2.cbm": "8ef09c49c50dc0331ad2e1184945cad9d93e7387639e716316584ceea10e0957",
+    "models/live/v02/corner_dual_v0_2_metadata.json": "04c4f6dff6a763eed65171a855948221b16832a63f2bd3430b74ef99ba24af5e",
+    "models/live/v02/corner_home_v0_2.cbm": "0aae861c601e21b7d31d5ab6de79e38c2724e5b47af2abbfa7ebaf0afd27d765",
+    "models/live_v07/evaluation.json": "df9040158e934cd1eca8e8a85bde659a1ea8fed7c37b857346c9532ae6346b7e",
+    "models/metadata.json": "4687a83e3b9e02a68435394f94fbc6a354724e44f07bada75930225e060a86ab",
+    "models/registry.json": "8178e0c6cffd47cbb8330115217e400c5c0466b9a3b26d6e765894fd3663a925"
+  }
+}

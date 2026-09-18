@@ -55,4 +55,5 @@ def test_model_only_shortlist_is_not_blank_without_odds():
     ]
     rows = MatchAnalysisService._model_only_candidates(markets, limit=5)
     assert len(rows) == 3
-    assert all(r["decision"] == "MODEL ONLY" for r in rows)
+    assert all(r["decision"] == "NO BET" for r in rows)
+

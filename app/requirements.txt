@@ -1,7 +1,7 @@
 pandas>=2.2
 numpy>=1.26
 scipy>=1.12
-scikit-learn>=1.4
+scikit-learn==1.8.0
 catboost>=1.2
 openpyxl>=3.1
 pytest>=8.0
@@ -9,3 +9,5 @@ fastapi>=0.115
 uvicorn>=0.30
 
 requests>=2.32
+truststore>=0.10
+httpx2==2.13.0

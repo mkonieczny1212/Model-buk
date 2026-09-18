@@ -1,0 +1,197 @@
+{
+  "suite_version": "corner-suite-v0.3-router",
+  "deployment_status": "research/paper only",
+  "fixture": {
+    "date": "2026-09-12 17:30:00",
+    "home_team": "Liverpool",
+    "away_team": "Manchester City"
+  },
+  "data_quality": {
+    "score": 100.0,
+    "feature_coverage": 1.0,
+    "min_team_history_matches": 456
+  },
+  "total_corners": {
+    "model": "corner-total-v0.1-livefit",
+    "expected_total": 9.74838265740339,
+    "markets": [
+      {
+        "line": 7.5,
+        "p_over": 0.7387202721999216,
+        "p_under": 0.26127972780007835,
+        "fair_over": 1.3536923753587848,
+        "fair_under": 3.827315683538844
+      },
+      {
+        "line": 8.5,
+        "p_over": 0.6247053352762055,
+        "p_under": 0.37529466472379447,
+        "fair_over": 1.6007546975052849,
+        "fair_under": 2.664572918285342
+      },
+      {
+        "line": 9.5,
+        "p_over": 0.5039398529357835,
+        "p_under": 0.49606014706421653,
+        "fair_over": 1.9843637969379433,
+        "fair_under": 2.0158845775420593
+      },
+      {
+        "line": 10.5,
+        "p_over": 0.3873270952684823,
+        "p_under": 0.6126729047315177,
+        "fair_over": 2.5817971740573253,
+        "fair_under": 1.6321923040455244
+      }
+    ]
+  },
+  "team_corners": {
+    "model": "corner-dual-v0.2-livefit",
+    "expected_home": 3.857056992136633,
+    "expected_away": 4.63144891804777,
+    "markets": [
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 2.5,
+        "p_over": 0.6880708170685932,
+        "p_under": 0.3119291829314068,
+        "fair_over": 1.453338777337378,
+        "fair_under": 3.2058558631877028
+      },
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 3.5,
+        "p_over": 0.5079385040712798,
+        "p_under": 0.49206149592872017,
+        "fair_over": 1.9687422630588138,
+        "fair_under": 2.032266308731581
+      },
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 4.5,
+        "p_over": 0.3456736234894141,
+        "p_under": 0.6543263765105859,
+        "fair_over": 2.8929022408636973,
+        "fair_under": 1.5282893001086617
+      },
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 5.5,
+        "p_over": 0.21912681644807797,
+        "p_under": 0.780873183551922,
+        "fair_over": 4.5635674182167,
+        "fair_under": 1.2806176739881703
+      },
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 6.5,
+        "p_over": 0.13063807180753895,
+        "p_under": 0.869361928192461,
+        "fair_over": 7.654736373277451,
+        "fair_under": 1.1502689128326058
+      },
+      {
+        "side": "home",
+        "team": "Liverpool",
+        "line": 7.5,
+        "p_over": 0.07385744232484204,
+        "p_under": 0.926142557675158,
+        "fair_over": 13.539596938677754,
+        "fair_under": 1.0797473798312887
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 2.5,
+        "p_over": 0.7586760145062086,
+        "p_under": 0.24132398549379142,
+        "fair_over": 1.3180856925480364,
+        "fair_under": 4.143806915644227
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 3.5,
+        "p_over": 0.6082363732922507,
+        "p_under": 0.39176362670774934,
+        "fair_over": 1.6440976631950148,
+        "fair_under": 2.5525595839605275
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 4.5,
+        "p_over": 0.4598606405454452,
+        "p_under": 0.5401393594545548,
+        "fair_over": 2.174571841621171,
+        "fair_under": 1.8513740620750598
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 5.5,
+        "p_over": 0.3303046482008207,
+        "p_under": 0.6696953517991793,
+        "fair_over": 3.0275081063709814,
+        "fair_under": 1.4932162770929143
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 6.5,
+        "p_over": 0.22695151232989874,
+        "p_under": 0.7730484876701013,
+        "fair_over": 4.406227522936225,
+        "fair_under": 1.2935799189180361
+      },
+      {
+        "side": "away",
+        "team": "Manchester City",
+        "line": 7.5,
+        "p_over": 0.15006892395402183,
+        "p_under": 0.8499310760459782,
+        "fair_over": 6.66360478673373,
+        "fair_under": 1.1765659924474907
+      }
+    ],
+    "status": "experimental until executable historical team-corners odds are available"
+  },
+  "market_check": {
+    "market": "total_corners",
+    "line": 9.5,
+    "over_odds": 4.8,
+    "under_odds": 1.22,
+    "over": {
+      "side": "OVER",
+      "probability": 0.5039398529357835,
+      "fair_odds": 1.9843637969379433,
+      "market_probability": 0.20265780730897012,
+      "edge": 0.3012820456268134,
+      "ev": 1.4189112940917608,
+      "decision": "BET"
+    },
+    "under": {
+      "side": "UNDER",
+      "probability": 0.49606014706421653,
+      "fair_odds": 2.0158845775420593,
+      "market_probability": 0.79734219269103,
+      "edge": -0.3012820456268135,
+      "ev": -0.39480662058165583,
+      "decision": "NO BET"
+    },
+    "best_decision": {
+      "side": "OVER",
+      "probability": 0.5039398529357835,
+      "fair_odds": 1.9843637969379433,
+      "market_probability": 0.20265780730897012,
+      "edge": 0.3012820456268134,
+      "ev": 1.4189112940917608,
+      "decision": "BET"
+    }
+  }
+}

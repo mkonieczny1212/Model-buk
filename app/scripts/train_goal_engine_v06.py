@@ -5,11 +5,11 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-from scipy.stats import poisson
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import brier_score_loss, log_loss, mean_absolute_error, mean_poisson_deviance
 
-from model_buk.goal_engine_v06 import build_training_frame, load_understat
+from model_buk.goal_engine_v06 import build_training_frame, load_understat, _poisson_market_rows
+from model_buk.features import FEATURE_POLICY
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "understat"
@@ -23,13 +23,10 @@ def event_metrics(frame, home_model, away_model, features):
     over25 = []
     btts = []
     for x, y in zip(lh, la):
-        k = np.arange(0, 11)
-        ph = poisson.pmf(k, x); pa = poisson.pmf(k, y)
-        ph /= ph.sum(); pa /= pa.sum()
-        mat = np.outer(ph, pa)
-        probs.append([np.tril(mat, k=-1).sum(), np.trace(mat), np.triu(mat, k=1).sum()])
-        over25.append(sum(mat[i, j] for i in range(11) for j in range(11) if i + j >= 3))
-        btts.append(1 - ph[0] - pa[0] + ph[0] * pa[0])
+        markets = {m["market_key"]: m["probability"] for m in _poisson_market_rows(x, y, "home", "away")}
+        probs.append([markets["result.home"], markets["result.draw"], markets["result.away"]])
+        over25.append(markets["goals.total.over.2.5"])
+        btts.append(markets["btts.yes"])
     probs = np.asarray(probs)
     over25 = np.asarray(over25)
     btts = np.asarray(btts)
@@ -59,6 +56,7 @@ def main():
     params = dict(
         loss="poisson", learning_rate=0.045, max_iter=350, max_leaf_nodes=20,
         min_samples_leaf=35, l2_regularization=3.0, random_state=42,
+        early_stopping=False,
     )
     home_model = HistGradientBoostingRegressor(**params).fit(train[features], train.home_goals)
     away_model = HistGradientBoostingRegressor(**params).fit(train[features], train.away_goals)
@@ -77,8 +75,8 @@ def main():
         }
 
     # Simple xG-state benchmark for interpretability, only on final test.
-    h0 = np.sqrt(test.home_xg_for_ewm5 * test.away_xg_against_ewm5).fillna(test.home_xg.mean())
-    a0 = np.sqrt(test.away_xg_for_ewm5 * test.home_xg_against_ewm5).fillna(test.away_xg.mean())
+    h0 = np.sqrt(test.home_xg_for_ewm5 * test.away_xg_against_ewm5).fillna(train.home_xg.mean())
+    a0 = np.sqrt(test.away_xg_for_ewm5 * test.home_xg_against_ewm5).fillna(train.away_xg.mean())
     evaluation["test_2025_26"]["naive_xg_home_mae"] = float(mean_absolute_error(test.home_goals, h0))
     evaluation["test_2025_26"]["naive_xg_away_mae"] = float(mean_absolute_error(test.away_goals, a0))
 
@@ -86,7 +84,12 @@ def main():
     joblib.dump(away_model, OUT / "away_goals.joblib")
     metadata = {
         "engine_version": "goal-dynamic-xg-v0.6",
-        "trained_through": str(raw.date.max()),
+        "trained_through": str(train.date.max()),
+        "state_data_through": str(raw.date.max()),
+        "training_matches": int(len(train)),
+        "feature_policy": FEATURE_POLICY,
+        "validation_status": "research_only",
+        "validation_registry": {},
         "matches": int(len(raw)),
         "leagues": sorted(raw.league_code.unique().tolist()),
         "feature_names": features,
@@ -107,3 +110,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

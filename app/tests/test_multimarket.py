@@ -23,6 +23,8 @@ def test_current_observations_change_expected_counts_reproducibly():
     analysis = engine.analyze("EPL", "2026-09-15", "Arsenal", "Chelsea")
     home = [{"goals_for": 3, "goals_against": 0, "shots_for": 18, "shots_against": 8, "sot_for": 7, "sot_against": 2, "corners_for": 8, "corners_against": 3, "cards_for": 1, "cards_against": 2}] * 5
     away = [{"goals_for": 1, "goals_against": 2, "shots_for": 9, "shots_against": 16, "sot_for": 2, "sot_against": 6, "corners_for": 3, "corners_against": 7, "cards_for": 2, "cards_against": 3}] * 5
+    home = [{**r, "date": f"2026-09-{i+1:02d}T15:00:00Z", "fixture_id": i+1} for i,r in enumerate(home)]
+    away = [{**r, "date": f"2026-09-{i+1:02d}T15:00:00Z", "fixture_id": i+11} for i,r in enumerate(away)]
     adjusted = apply_current_observations(analysis, home, away)
     adjusted["markets"] = rebuild_markets_from_expected(adjusted)
     assert adjusted["current_data"]["used_in_model"] is True
@@ -51,7 +53,8 @@ def test_odds_parser_and_value_ranking():
     over = next(x for x in compared if x["market_key"] == "goals.total.over.2.5")
     assert over["devig_available"] is True
     assert over["ev"] > 0
-    assert opportunities
+    assert not opportunities  # unvalidated probabilities and undated odds cannot pass BET
+    assert over["decision"] == "NO BET"
 
 
 def test_three_way_result_devig():
@@ -69,3 +72,4 @@ def test_three_way_result_devig():
     assert len(compared) == 3
     assert all(x["devig_available"] for x in compared)
     assert abs(sum(x["market_probability"] for x in compared) - 1.0) < 1e-9
+

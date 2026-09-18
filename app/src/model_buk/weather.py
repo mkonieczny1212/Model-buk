@@ -43,6 +43,8 @@ def find_stadium(path: str | Path, venue_name: str | None, city: str | None = No
     for stadium in load_stadiums(path):
         if not stadium.get("name"):
             continue
+        if city and stadium.get("city") and normalize_name(city) != normalize_name(stadium["city"]):
+            continue
         score = SequenceMatcher(None, target, normalize_name(stadium["name"])).ratio()
         if city and stadium.get("city") and normalize_name(city) == normalize_name(stadium["city"]):
             score += 0.08
@@ -68,6 +70,12 @@ def geocode_city(city: str | None, country: str | None = None, timeout: int = 10
         return None
     target_city = normalize_name(city)
     target_country = normalize_name(country or "")
+    country_aliases = {"england": "united kingdom", "scotland": "united kingdom", "wales": "united kingdom", "northern ireland": "united kingdom"}
+    target_country = country_aliases.get(target_country, target_country)
+    if target_country:
+        results = [row for row in results if normalize_name(row.get("country") or "") == target_country]
+        if not results:
+            return None
 
     def score(row: dict[str, Any]) -> float:
         s = SequenceMatcher(None, target_city, normalize_name(row.get("name") or "")).ratio()
@@ -94,6 +102,8 @@ def geocode_city(city: str | None, country: str | None = None, timeout: int = 10
 
 def forecast_for_kickoff(lat: float, lon: float, kickoff: str, timeout: int = 10) -> dict[str, Any] | None:
     dt = datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        raise ValueError("Weather kickoff requires an explicit timezone")
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -110,7 +120,11 @@ def forecast_for_kickoff(lat: float, lon: float, kickoff: str, timeout: int = 10
         return None
     target = dt.astimezone(timezone.utc).replace(tzinfo=None)
     parsed = [datetime.fromisoformat(t) for t in times]
+    if target < min(parsed) or target > max(parsed):
+        return None
     idx = min(range(len(parsed)), key=lambda i: abs((parsed[i] - target).total_seconds()))
+    if abs((parsed[idx] - target).total_seconds()) > 3600:
+        return None
 
     def value(field: str):
         arr = hourly.get(field) or [None] * len(times)

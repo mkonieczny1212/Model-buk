@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+from model_buk.live_model import eligible_observations
 
 
 FIELD_MAP = {
@@ -50,6 +51,8 @@ def apply_current_observations(
     must be learned and validated separately.
     """
     adjusted = {k: (v.copy() if isinstance(v, dict) else v) for k, v in analysis.items()}
+    home_rows = eligible_observations(home_rows, analysis["fixture"]["date"])
+    away_rows = eligible_observations(away_rows, analysis["fixture"]["date"])
     expected = {k: v.copy() for k, v in analysis["expected"].items()}
     live_factors: list[dict[str, Any]] = []
     samples: dict[str, dict[str, int]] = {}
@@ -60,6 +63,9 @@ def apply_current_observations(
 
     for metric, (for_field, against_field) in FIELD_MAP.items():
         base = expected[metric]
+        if base.get("home") is None or base.get("away") is None:
+            samples[metric] = {"home": 0, "away": 0}
+            continue
         hist_factor = historical_factor_map.get(f"{metric}_rates", {})
         hist_home = hist_factor.get("home", {})
         hist_away = hist_factor.get("away", {})

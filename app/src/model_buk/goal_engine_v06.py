@@ -12,6 +12,7 @@ import pandas as pd
 from scipy.stats import poisson
 
 from model_buk.team_names import resolve_team_name
+from model_buk.features import FEATURE_POLICY, freeze_team_day, prior_day_mean, utc_dates
 
 
 UNDERSTAT_FILES = {
@@ -39,7 +40,7 @@ class GoalEngineArtifacts:
 
 def _load_one(path: Path, league_code: str) -> pd.DataFrame:
     df = pd.read_csv(path)
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["date"] = utc_dates(df["date"])
     df["league_code"] = league_code
     return df[df["date"].notna()].sort_values("date").reset_index(drop=True)
 
@@ -86,6 +87,9 @@ def _to_team_long(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_training_frame(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    df = df.copy()
+    df["date"] = utc_dates(df["date"])
+    df = df.sort_values("date", kind="stable").reset_index(drop=True)
     long = _to_team_long(df)
     for metric in STATE_METRICS:
         shifted = long.groupby("team")[metric].shift(1)
@@ -105,12 +109,14 @@ def build_training_frame(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         left = 0
         for j, idx in enumerate(idxs):
             current = dates[j]
-            while left < j and (current - dates[left]).days > 14:
+            while left < j and current - dates[left] > pd.Timedelta(days=14):
                 left += 1
-            long.at[idx, "matches_14d"] = j - left
+            long.at[idx, "matches_14d"] = sum(d < current.normalize() for d in dates[left:j])
 
     state_cols = [c for c in long.columns if c.endswith("_ewm5") or c.endswith("_ewm15")]
     state_cols += ["matches_before", "rest_days", "matches_14d"]
+    freeze_team_day(long, [c for c in state_cols if c not in ("rest_days", "matches_14d")] + ["prev_date"])
+    long["rest_days"] = (long.date - long.prev_date).dt.total_seconds() / 86400.0
     home = long[long.is_home.eq(1)][["match_idx"] + state_cols].rename(columns={c: f"home_{c}" for c in state_cols})
     away = long[long.is_home.eq(0)][["match_idx"] + state_cols].rename(columns={c: f"away_{c}" for c in state_cols})
 
@@ -121,9 +127,8 @@ def build_training_frame(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     match = match.merge(home, on="match_idx", how="left").merge(away, on="match_idx", how="left")
 
     for col in ("home_goals", "away_goals", "home_xg", "away_xg"):
-        match[f"league_{col}_prior"] = match.groupby("league_code")[col].transform(
-            lambda s: s.shift(1).expanding(min_periods=30).mean()
-        )
+        for idx in match.groupby("league_code", sort=False).groups.values():
+            match.loc[idx, f"league_{col}_prior"] = prior_day_mean(match.loc[idx, "date"], match.loc[idx, col], 760, 30)
 
     interaction_map = {
         "xg_for": "xg_against",
@@ -164,13 +169,15 @@ def _team_history(df: pd.DataFrame, team: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _append_current(base: pd.DataFrame, current_rows: list[dict[str, Any]]) -> pd.DataFrame:
+def _append_current(base: pd.DataFrame, current_rows: list[dict[str, Any]], when: pd.Timestamp | None = None) -> pd.DataFrame:
+    base = base.copy()
+    base["date"] = utc_dates(base["date"])
     if not current_rows:
         return base
     rows = []
     for r in current_rows:
         rows.append({
-            "date": pd.to_datetime(r.get("date"), errors="coerce"),
+            "date": pd.to_datetime(r.get("date"), utc=True, errors="coerce").tz_localize(None),
             "goals_for": r.get("goals_for"), "goals_against": r.get("goals_against"),
             "xg_for": r.get("xg_for"), "xg_against": r.get("xg_against"),
             "npxg_for": r.get("npxg_for"), "npxg_against": r.get("npxg_against"),
@@ -180,15 +187,24 @@ def _append_current(base: pd.DataFrame, current_rows: list[dict[str, Any]]) -> p
         })
     add = pd.DataFrame(rows)
     add = add[add.date.notna()]
+    if when is not None:
+        cutoff = pd.to_datetime(when, utc=True).tz_localize(None).normalize()
+        add = add[add.date < cutoff]
     if add.empty:
         return base
-    # API rows may overlap with the last historical season. Date-level dedupe keeps the provider-current row.
-    combined = pd.concat([base, add], ignore_index=True).sort_values("date")
-    return combined.drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
+    # A team has at most one fixture per UTC day in these league feeds. Grouping
+    # by day also handles providers disagreeing on kickoff times. Last non-null
+    # per field preserves historical process data absent from the current feed.
+    combined = pd.concat([base, add], ignore_index=True)
+    combined["_day"] = combined.date.dt.normalize()
+    return combined.groupby("_day", sort=True).last().reset_index(drop=True).sort_values("date").reset_index(drop=True)
 
 
 def _state_at_prediction(history: pd.DataFrame, when: pd.Timestamp) -> dict[str, float]:
-    hist = history[history.date < when].sort_values("date").copy()
+    when = pd.to_datetime(when, utc=True).tz_localize(None)
+    history = history.copy()
+    history["date"] = utc_dates(history["date"])
+    hist = history[history.date < when.normalize()].sort_values("date").copy()
     out: dict[str, float] = {}
     if hist.empty:
         return out
@@ -204,19 +220,19 @@ def _state_at_prediction(history: pd.DataFrame, when: pd.Timestamp) -> dict[str,
 
 
 def _latest_league_priors(df: pd.DataFrame, league_code: str, when: pd.Timestamp) -> dict[str, float]:
-    league = df[(df.league_code.eq(league_code)) & (df.date < when)].copy()
+    when = pd.to_datetime(when, utc=True).tz_localize(None)
+    df = df.copy()
+    df["date"] = utc_dates(df["date"])
+    league = df[(df.league_code.eq(league_code)) & (df.date < when.normalize())].sort_values("date", kind="stable").tail(760)
     if league.empty:
         return {}
-    return {
-        "league_home_goals_prior": float(pd.to_numeric(league.home_goals, errors="coerce").tail(760).mean()),
-        "league_away_goals_prior": float(pd.to_numeric(league.away_goals, errors="coerce").tail(760).mean()),
-        "league_home_xg_prior": float(pd.to_numeric(league.home_xg, errors="coerce").tail(760).mean()),
-        "league_away_xg_prior": float(pd.to_numeric(league.away_xg, errors="coerce").tail(760).mean()),
-    }
+    return {f"league_{col}_prior": float(pd.to_numeric(league[col], errors="coerce").mean()) if league[col].notna().sum() >= 30 else np.nan
+            for col in ("home_goals", "away_goals", "home_xg", "away_xg")}
 
 
 def _poisson_market_rows(home_lambda: float, away_lambda: float, home_name: str, away_name: str) -> list[dict[str, Any]]:
-    k = np.arange(0, 12)
+    # Adaptive support leaves less than 1e-12 mass per side outside the matrix.
+    k = np.arange(int(max(poisson.ppf(1 - 1e-12, home_lambda), poisson.ppf(1 - 1e-12, away_lambda))) + 1)
     hp = poisson.pmf(k, home_lambda); ap = poisson.pmf(k, away_lambda)
     hp /= hp.sum(); ap /= ap.sum()
     matrix = np.outer(hp, ap)
@@ -250,8 +266,8 @@ def _poisson_market_rows(home_lambda: float, away_lambda: float, home_name: str,
         {
             "market_key": key, "label": label, "group": group, "threshold": line, "side": side,
             "probability": float(np.clip(p, 1e-8, 1 - 1e-8)), "fair_odds": float(1 / np.clip(p, 1e-8, 1 - 1e-8)),
-            "engine": "goal-dynamic-xg-v0.6", "model_grade": "A",
-            "predictive_validated": True, "market_validated": False, "eligible_for_bet": False,
+            "engine": "goal-dynamic-xg-v0.6", "model_grade": "research",
+            "predictive_validated": False, "market_validated": False, "eligible_for_bet": False,
         }
         for key, label, group, line, side, p in rows
     ]
@@ -308,8 +324,8 @@ class DynamicGoalEngineV06:
             raise ValueError(f"Understat team mapping failed: {home_name} ({hs:.2f}), {away_name} ({as_:.2f})")
 
         league = self.raw[self.raw.league_code.eq(league_code)]
-        hhist = _append_current(_team_history(league, home), home_current or [])
-        ahist = _append_current(_team_history(league, away), away_current or [])
+        hhist = _append_current(_team_history(league, home), home_current or [], when_ts)
+        ahist = _append_current(_team_history(league, away), away_current or [], when_ts)
         hstate = _state_at_prediction(hhist, when_ts)
         astate = _state_at_prediction(ahist, when_ts)
         row: dict[str, Any] = {}
@@ -330,7 +346,8 @@ class DynamicGoalEngineV06:
         lh = float(np.clip(self.artifacts.home_model.predict(X)[0], 0.05, 5.5))
         la = float(np.clip(self.artifacts.away_model.predict(X)[0], 0.05, 5.5))
         markets = _poisson_market_rows(lh, la, home_name, away_name)
-        current_xg_n = int(sum(1 for r in (home_current or []) if r.get("xg_for") is not None) + sum(1 for r in (away_current or []) if r.get("xg_for") is not None))
+        current_xg_n = sum(1 for r in (home_current or []) + (away_current or [])
+                           if r.get("xg_for") is not None and pd.to_datetime(r.get("date"), utc=True, errors="coerce") < when_ts.tz_localize("UTC").normalize())
         feature_nonmissing = float(X.notna().mean(axis=1).iloc[0])
         return {
             "engine_version": "goal-dynamic-xg-v0.6",
@@ -345,5 +362,9 @@ class DynamicGoalEngineV06:
             "feature_coverage": round(feature_nonmissing, 3),
             "current_xg_observations": current_xg_n,
             "training": self.artifacts.metadata.get("evaluation"),
-            "note": "OOS-trained model. Historical xG/process states are updated with current API xG where the provider exposes it; missing current PPDA/deep data are not fabricated.",
+            "feature_policy": FEATURE_POLICY,
+            "artifact_compatible": self.artifacts.metadata.get("feature_policy") == FEATURE_POLICY,
+            "validation_status": "research_only",
+            "requires_retraining": self.artifacts.metadata.get("feature_policy") != FEATURE_POLICY,
+            "note": "Research prediction; archived evaluation is not validation of this corrected pipeline. Legacy artifacts require retraining. Only observations from prior UTC days enter states.",
         }

@@ -10,8 +10,10 @@ import pandas as pd
 from model_buk.config import CornerV02Config, load_corner_v02_config
 from model_buk.data_readiness import readiness_summary
 from model_buk.inference import attach_total_market_price
-from model_buk.goal_engine_v06 import DynamicGoalEngineV06
+from model_buk.goal_engine_v06 import DynamicGoalEngineV06, load_understat
 from model_buk.live_adjustment import apply_current_observations
+from model_buk.live_model import apply_live_model
+from model_buk.security import safe_error
 from model_buk.live_provider import ApiFootballClient
 from model_buk.multimarket import MultiMarketEngine, rebuild_markets_from_expected
 from model_buk.catalog import LEAGUES
@@ -113,6 +115,13 @@ class MatchAnalysisService:
         self.provider = provider or ApiFootballClient()
         self.corner_service: PredictionService | None = None
         self.goal_engine: DynamicGoalEngineV06 | None = None
+        self.model_loading_errors: list[dict[str, str]] = []
+        self.understat_history = pd.DataFrame()
+        if self.paths.understat.exists():
+            try:
+                self.understat_history = load_understat(self.paths.understat)
+            except Exception as exc:
+                self.model_loading_errors.append({"component": "Understat", "error_type": type(exc).__name__, "reason": "Nie udało się odczytać danych Understat."})
         try:
             if self.paths.history.exists() and self.paths.model_root.exists():
                 self.corner_service = PredictionService(self.paths)
@@ -121,15 +130,16 @@ class MatchAnalysisService:
         try:
             if self.paths.understat.exists() and self.paths.goal_model.exists():
                 self.goal_engine = DynamicGoalEngineV06(self.paths.understat, self.paths.goal_model)
-        except Exception:
+        except Exception as exc:
             self.goal_engine = None
+            self.model_loading_errors.append({"component": "goal_v06", "error_type": type(exc).__name__, "reason": "Nie załadowano modelu xG. Sprawdź artefakty i requirements-lock.txt; silnik live działa niezależnie."})
 
     def status(self) -> dict[str, Any]:
         leagues = self.multimarket.leagues()
         latest = max((x["history_through"] for x in leagues if x["history_through"]), default=None)
         return {
-            "status": "ok",
-            "app_version": "0.6.1",
+            "status": "ok" if (self.provider.connected or not self.multimarket.history.empty) and not self.model_loading_errors else "degraded",
+            "app_version": "0.7.0",
             "deployment_status": "research / paper betting",
             "live_provider": self.provider.status(),
             "leagues": len(leagues),
@@ -137,6 +147,9 @@ class MatchAnalysisService:
             "history_through": latest,
             "market_engines": ["1X2", "BTTS", "Goals", "Corners", "Shots", "SOT", "Cards"],
             "goal_dynamic_xg_available": self.goal_engine is not None,
+            "model_loading_errors": self.model_loading_errors,
+            "understat_matches": len(self.understat_history),
+            "understat_through": str(self.understat_history.date.max()) if not self.understat_history.empty else None,
             "goal_dynamic_xg_leagues": sorted(self.goal_engine.supported_leagues) if self.goal_engine else [],
             "epl_corner_champion_available": self.corner_service is not None,
             "pure_model_rule": "Bookmaker odds are never model inputs; prices are attached only after PURE probabilities exist.",
@@ -202,16 +215,16 @@ class MatchAnalysisService:
             ref = self.corner_service.predict(date=analysis["fixture"]["date"], home_team=rh, away_team=ra)
             analysis["benchmarks"] = analysis.get("benchmarks", {})
             analysis["benchmarks"]["epl_corner_champion"] = {
-                "status": "validated_reference_not_current_context",
+                "status": "legacy_reference_requires_retraining",
                 "model": ref.get("total_corners", {}).get("model"),
                 "expected_total": ref.get("total_corners", {}).get("expected_total"),
                 "expected_home": ref.get("team_corners", {}).get("expected_home"),
                 "expected_away": ref.get("team_corners", {}).get("expected_away"),
                 "markets": self._corner_reference_to_markets(ref),
-                "note": "Best historical EPL corners benchmark. v0.6 current-context engine is evaluated separately.",
+                "note": "Legacy EPL corner reference. Its artifacts predate the corrected temporal feature policy and require retraining; not a validated current prediction.",
             }
         except Exception as exc:
-            analysis.setdefault("warnings", []).append(f"EPL corner benchmark unavailable: {exc}")
+            analysis.setdefault("warnings", []).append(f"EPL corner benchmark unavailable: {safe_error(exc)}")
 
     def _apply_goal_v06(self, analysis: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
         if self.goal_engine is None:
@@ -236,7 +249,7 @@ class MatchAnalysisService:
                 away_current=observations.get("away") or [],
             )
         except Exception as exc:
-            analysis.setdefault("warnings", []).append(f"Dynamic goal engine unavailable for this fixture: {exc}")
+            analysis.setdefault("warnings", []).append(f"Dynamic goal engine unavailable for this fixture: {safe_error(exc)}")
             return analysis
 
         # Replace only goal-derived markets. Other event markets keep their own engine/status.
@@ -248,11 +261,11 @@ class MatchAnalysisService:
             "source": pred["engine_version"],
         }
         analysis.setdefault("model_readiness", {})["goals"] = {
-            "grade": "A",
-            "predictive_validated": True,
+            "grade": "RESEARCH",
+            "predictive_validated": False,
             "market_validated": False,
             "eligible_for_bet": False,
-            "reason": "Predictive OOS gate passed, but market calibration/CLV + prospective paper-trading gate is not complete yet.",
+            "reason": "Corrected research model: current-provider calibration and prospective validation remain required.",
             "engine": pred["engine_version"],
             "feature_coverage": pred["feature_coverage"],
             "current_xg_observations": pred["current_xg_observations"],
@@ -295,7 +308,7 @@ class MatchAnalysisService:
                 "away": next((x for x in lineups if x.get("team_id") == away_id), None),
                 "status": "confirmed" if len(lineups) >= 2 else "not_confirmed",
                 "model_usage": "quality_gate",
-                "explanation": "Potwierdzone XI obniża uncertainty; lineup-strength będzie osobnym, walidowanym modelem.",
+                "explanation": "Potwierdzone XI jest kontekstem. Wpływ zmian składu wymaga osobnego modelu i walidacji.",
             },
             {
                 "key": "referee",
@@ -332,46 +345,19 @@ class MatchAnalysisService:
         market family so the UI does not show five near-identical complements of
         the same line.
         """
-        by_group: dict[str, list[dict[str, Any]]] = {}
-        for row in markets:
-            p = row.get("probability")
-            if p is None:
+        valid = [r for r in markets if r.get("probability") is not None]
+        ranked = sorted(valid, key=lambda r: float(r["probability"]), reverse=True)
+        selected, groups = [], set()
+        for row in ranked:
+            if row.get("group") in groups:
                 continue
-            p = float(p)
-            if not (0.52 <= p <= 0.90):
-                continue
-            by_group.setdefault(str(row.get("group") or "other"), []).append(row)
-        preferred_order = ["result", "goals", "btts", "corners", "sot", "shots", "cards"]
-        selected: list[dict[str, Any]] = []
-        for group in preferred_order:
-            rows = by_group.get(group) or []
-            if not rows:
-                continue
-            best = max(rows, key=lambda r: float(r.get("probability") or 0))
-            selected.append({
-                **best,
-                "bookmaker": None, "odds": None, "market_probability": None,
-                "edge": None, "ev": None, "decision": "MODEL ONLY",
-                "decision_reason": "Brak porównywalnego kursu w feedzie; to jest czysta predykcja modelu, nie ocena value.",
-            })
+            groups.add(row.get("group"))
+            selected.append({**row, "bookmaker": None, "odds": None,
+                             "market_probability": None, "edge": None, "ev": None,
+                             "decision": "NO BET", "decision_reason": "Brak aktualnego porównywalnego kursu; to prognoza prawdopodobieństwa."})
             if len(selected) >= limit:
                 break
-        if len(selected) < limit:
-            used = {x.get("market_key") for x in selected}
-            rest = sorted(
-                [m for m in markets if m.get("market_key") not in used and m.get("probability") is not None],
-                key=lambda r: float(r.get("probability") or 0),
-                reverse=True,
-            )
-            for row in rest:
-                selected.append({
-                    **row, "bookmaker": None, "odds": None, "market_probability": None,
-                    "edge": None, "ev": None, "decision": "MODEL ONLY",
-                    "decision_reason": "Brak porównywalnego kursu w feedzie; to jest czysta predykcja modelu, nie ocena value.",
-                })
-                if len(selected) >= limit:
-                    break
-        return selected[:limit]
+        return selected
 
     def analyze_manual(self, league_code: str, date: str, home_team: str, away_team: str, persist_context: bool = False) -> dict[str, Any]:
         analysis = self.multimarket.analyze(league_code, date, home_team, away_team)
@@ -428,27 +414,22 @@ class MatchAnalysisService:
         if not league_code:
             raise ValueError(f"Liga fixture_id={fixture_id} nie jest jeszcze wspierana przez v0.6")
 
-        spec = LEAGUES.get(league_code)
-        if spec and not spec.historical_division:
-            analysis = self._context_only_analysis(fixture)
-        else:
-            analysis = self.multimarket.analyze(
-                league_code,
-                fixture["kickoff"],
-                fixture["home"]["name"],
-                fixture["away"]["name"],
-            )
-            analysis["fixture"]["fixture_id"] = fixture_id
-            analysis["fixture"]["provider_home"] = fixture["home"]
-            analysis["fixture"]["provider_away"] = fixture["away"]
-            analysis["fixture"]["round"] = fixture.get("round")
-            analysis["fixture"]["venue"] = fixture.get("venue")
-            analysis["fixture"]["referee"] = fixture.get("referee")
-
-            observations = live.get("recent_observations") or {}
-            analysis = apply_current_observations(analysis, observations.get("home") or [], observations.get("away") or [])
-            analysis["markets"] = rebuild_markets_from_expected(analysis)
-            analysis = self._apply_goal_v06(analysis, live)
+        # Competition membership never blocks probability calculation: derive
+        # each market from available completed matches for the two real teams.
+        analysis = self._context_only_analysis(fixture)
+        analysis = apply_live_model(analysis, live, self.multimarket.history, self.understat_history)
+        analysis.setdefault("warnings", []).extend(x["reason"] for x in self.model_loading_errors)
+        # Keep the learned xG model as an independent challenger until the
+        # provider shift and new live pipeline have been evaluated together.
+        if self.goal_engine is not None and league_code in self.goal_engine.supported_leagues:
+            try:
+                observations = live.get("recent_observations") or {}
+                pred = self.goal_engine.predict(league_code, fixture["kickoff"], fixture["home"]["name"], fixture["away"]["name"],
+                                                home_current=observations.get("home") or [], away_current=observations.get("away") or [])
+                analysis.setdefault("benchmarks", {})["dynamic_xg"] = pred
+                analysis["factors"].append({"key": "dynamic_xg_challenger", "label": "Wyuczony model xG — porównanie", "home": pred["lambda_home"], "away": pred["lambda_away"], "status": "context", "explanation": "Oddzielna prognoza wyuczonego modelu. Różnic względem modelu live nie maskujemy arbitralną średnią."})
+            except Exception as exc:
+                analysis.setdefault("warnings", []).append("Model porównawczy xG niedostępny: " + safe_error(exc))
         analysis["mode"] = "live_current_context"
 
         weather = None
@@ -456,7 +437,7 @@ class MatchAnalysisService:
             try:
                 weather = weather_context(self.paths.stadiums, fixture)
             except Exception as exc:
-                weather = {"available": False, "reason": str(exc)}
+                weather = {"available": False, "reason": safe_error(exc)}
         analysis["factors"] = analysis.get("factors", []) + self._context_cards(live, weather)
         analysis["current_context"] = {
             "connected": True,
@@ -478,62 +459,22 @@ class MatchAnalysisService:
         opportunities, compared = rank_opportunities(analysis["markets"], raw_odds)
         analysis["opportunities"] = opportunities[:12]
         analysis["market_comparison"] = compared
-        # The top panel must never be confused with the BET gate. It first shows
-        # positive-value candidates (validated or RESEARCH), then the best priced
-        # comparisons, and finally pure model forecasts when the odds feed has no
-        # compatible market. This fixes the previous UX where a working model
-        # looked like "no prediction" simply because no price matched.
-        positive_candidates = [
-            row for row in compared
-            if float(row.get("edge") or 0) > 0 and float(row.get("ev") or 0) > 0
-        ]
-        positive_candidates.sort(
-            key=lambda r: (
-                r.get("decision") == "BET",
-                r.get("predictive_validated") is True,
-                float(r.get("ev") or 0),
-                float(r.get("edge") or 0),
-                float(r.get("probability") or 0),
-            ),
-            reverse=True,
-        )
-        if positive_candidates:
-            analysis["top_candidates"] = positive_candidates[:5]
-            analysis["top_candidates_mode"] = "value_candidates"
-        elif compared:
-            analysis["top_candidates"] = sorted(
-                compared,
-                key=lambda r: (
-                    r.get("predictive_validated") is True,
-                    float(r.get("ev") or -999),
-                    float(r.get("probability") or 0),
-                ),
-                reverse=True,
-            )[:5]
-            analysis["top_candidates_mode"] = "priced_no_positive_value"
-        else:
-            analysis["top_candidates"] = self._model_only_candidates(analysis.get("markets", []), limit=5)
-            analysis["top_candidates_mode"] = "model_only_no_comparable_odds"
+        by_key = {r["market_key"]: r for r in compared}
+        candidates = self._model_only_candidates(analysis["markets"], limit=5)
+        analysis["top_candidates"] = [by_key.get(r["market_key"], r) for r in candidates]
+        analysis["top_candidates_mode"] = "highest_probability_diversified"
+        best = max(analysis["markets"], key=lambda r: r["probability"], default=None)
+        analysis["most_likely"] = by_key.get(best["market_key"], next((r for r in candidates if r["market_key"] == best["market_key"]), best)) if best else None
+        analysis["recommendation_summary"] = {"decision": "BET" if opportunities else "NO BET", "bet_count": len(opportunities),
+                                               "reason": "Dostępne zakłady przeszły kontrolę kursu, walidacji i wartości." if opportunities else "Prognozy są dostępne, ale żaden zakład nie przeszedł wszystkich kontroli ceny i walidacji."}
         analysis["raw_odds_count"] = len(raw_odds)
         analysis["normalized_odds"] = normalize_odds(raw_odds)
 
         self._attach_epl_corner_reference(analysis)
 
-        samples = analysis.get("current_data", {}).get("observation_samples", {})
-        sample_values = [v.get("home", 0) for v in samples.values()] + [v.get("away", 0) for v in samples.values()]
-        current_n = min(sample_values) if sample_values else 0
-        base_quality = float(analysis["data_quality"]["score"])
-        live_bonus = 8 if analysis.get("current_data", {}).get("used_in_model") else 0
-        goal_bonus = 8 if analysis.get("model_readiness", {}).get("goals", {}).get("grade") == "A" else 0
-        # Lineups/injuries/odds improve completeness but do not receive invented predictive weight.
-        context_bonus = 2 if len(live.get("lineups") or []) >= 2 else 0
-        confidence = min(94.0, base_quality + live_bonus + goal_bonus + context_bonus)
-        analysis["confidence"] = {
-            "score": round(confidence, 1),
-            "current_observations_min_sample": int(current_n),
-            "lineups_confirmed": len(live.get("lineups") or []) >= 2,
-            "odds_available": bool(raw_odds),
-            "label": "wysoka" if confidence >= 80 else "średnia" if confidence >= 60 else "niska",
-        }
+        analysis["confidence"] = {"score": analysis["data_quality"]["score"], "label": "pokrycie danych, nie pewność trafienia", "calibrated": False}
+        analysis["prediction_scope"] = "prematch_90_minutes"
+        analysis["prospective"] = pd.Timestamp(fixture["kickoff"]) > pd.Timestamp.now(tz="UTC")
         analysis["generated_at"] = datetime.now(timezone.utc).isoformat()
         return analysis
+

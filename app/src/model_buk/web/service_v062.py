@@ -4,6 +4,7 @@ from typing import Any
 
 from model_buk.catalog import LEAGUES
 from model_buk.secondary_providers import FootyStatsClient, SportmonksClient
+from model_buk.security import safe_error
 from model_buk.web.service import MatchAnalysisService as BaseMatchAnalysisService
 
 
@@ -22,7 +23,7 @@ class MatchAnalysisService(BaseMatchAnalysisService):
 
     def status(self) -> dict[str, Any]:
         payload = super().status()
-        payload["app_version"] = "0.6.2"
+        payload["app_version"] = "0.7.0"
         payload["secondary_providers"] = {
             "footystats": self.footystats.status(),
             "sportmonks": self.sportmonks.status(),
@@ -64,7 +65,7 @@ class MatchAnalysisService(BaseMatchAnalysisService):
             except Exception as exc:
                 secondary["footystats"] = {
                     "available": False,
-                    "error": str(exc),
+                    "error": safe_error(exc),
                     "model_usage": "reconciliation_only",
                 }
 

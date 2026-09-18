@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from model_buk.web.service import PredictionService, ServicePaths
 from model_buk.web.service_v062 import MatchAnalysisService
 from model_buk.web.storage import PredictionStore
+from model_buk.security import safe_error
 
 
 class CornerPredictionRequest(BaseModel):
@@ -40,6 +41,8 @@ def _paths() -> ServicePaths:
         config=Path(os.getenv("MODEL_BUK_CONFIG", "config/corners_v02.toml")),
         multileague_history=Path(os.getenv("MODEL_BUK_MULTILEAGUE_HISTORY", "data/multileague/europe16_matches_v05.csv.gz")),
         stadiums=Path(os.getenv("MODEL_BUK_STADIUMS", "data/stadiums_europe.json")),
+        understat=Path(os.getenv("MODEL_BUK_UNDERSTAT", "data/understat")),
+        goal_model=Path(os.getenv("MODEL_BUK_GOAL_MODEL", "models/goal_v06")),
     )
 
 
@@ -67,12 +70,19 @@ def create_app(
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.6.2",
+        version="0.7.0",
         description="Multi-league, multi-market football probability + current-context research engine.",
     )
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
+        if analysis_service is not None:
+            try:
+                state = analysis_service.status()
+                if state.get("status") in {"degraded", "unavailable", "error"} or state.get("degraded"):
+                    return {"status": "degraded"}
+            except Exception:
+                return {"status": "degraded"}
         return {"status": "ok"}
 
     @app.get("/api/status")
@@ -82,7 +92,7 @@ def create_app(
                 return analysis_service.status()
             return legacy_service.status()
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.get("/api/catalog/leagues")
     def leagues() -> dict[str, Any]:
@@ -91,7 +101,7 @@ def create_app(
         try:
             return {"leagues": analysis_service.leagues()}
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.get("/api/teams")
     def teams(league: str | None = None) -> dict[str, list[str]]:
@@ -100,16 +110,18 @@ def create_app(
                 return {"teams": analysis_service.teams(league)}
             return {"teams": legacy_service.teams()}
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.get("/api/fixtures")
-    def fixtures(date: str, league: list[str] = Query(default=[])) -> dict[str, Any]:
+    def fixtures(date: str, league: list[str] | None = Query(default=None)) -> dict[str, Any]:
+        if league is not None and not any(league):
+            return {"mode": "live", "fixtures": [], "message": "Nie wybrano żadnej ligi."}
         if analysis_service is None:
             return {"mode": "manual", "fixtures": [], "message": "Live fixture service unavailable in this test mode."}
         try:
             return analysis_service.fixtures(date, league or None)
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.post("/api/analyze/manual")
     def analyze_manual(request: ManualAnalysisRequest) -> dict[str, Any]:
@@ -126,9 +138,9 @@ def create_app(
                 payload["prediction_id"] = store.save(payload)
             return payload
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=safe_error(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.post("/api/analyze/fixture/{fixture_id}")
     def analyze_fixture(fixture_id: int, deep: bool = True, persist: bool = True) -> dict[str, Any]:
@@ -137,17 +149,17 @@ def create_app(
         try:
             payload = analysis_service.analyze_fixture(fixture_id, deep=deep)
             normalized_odds = payload.get("normalized_odds") or []
-            if normalized_odds:
+            if persist and normalized_odds:
                 payload["odds_snapshots_saved"] = store.save_odds(fixture_id, normalized_odds)
             if persist:
                 payload["prediction_id"] = store.save(payload)
             return payload
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=safe_error(exc)) from exc
         except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     # Legacy v0.4 corner endpoint remains available for reproducibility.
     @app.post("/api/predict/corners")
@@ -158,9 +170,9 @@ def create_app(
                 payload["prediction_id"] = store.save(payload)
             return payload
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=safe_error(exc)) from exc
         except FileNotFoundError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
 
     @app.get("/api/predictions")
     def predictions(limit: int = Query(default=20, ge=1, le=200)) -> dict[str, Any]:

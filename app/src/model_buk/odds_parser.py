@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import math
+from datetime import datetime, timezone
 from collections import defaultdict
 from typing import Any
 
@@ -40,7 +42,10 @@ def _parse_ou(value: str) -> tuple[str, float] | None:
 
 
 def to_market_key(row: dict[str, Any]) -> str | None:
-    bet_id = int(row.get("bet_id") or 0)
+    try:
+        bet_id = int(row.get("bet_id") or 0)
+    except (TypeError, ValueError):
+        return None
     if bet_id == 1:
         value = str(row.get("value") or "").strip().lower()
         return {"home": "result.home", "draw": "result.draw", "away": "result.away"}.get(value)
@@ -65,6 +70,12 @@ def to_market_key(row: dict[str, Any]) -> str | None:
 def normalize_odds(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     output = []
     for row in raw:
+        try:
+            price = float(row.get("odd"))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(price) or price <= 1:
+            continue
         key = to_market_key(row)
         if not key:
             continue
@@ -90,8 +101,18 @@ def rank_opportunities(
     min_edge: float = 0.05,
     min_ev: float = 0.05,
     prefer_polish: bool = True,
+    *,
+    now: datetime | None = None,
+    max_odds_age_hours: float = 6.0,
+    stake_cost_rate: float = 0.0,
+    winnings_cost_rate: float = 0.0,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Compare PURE probabilities to executable prices without using odds as features."""
+    if not (0 <= stake_cost_rate < 1 and 0 <= winnings_cost_rate < 1):
+        raise ValueError("Cost rates must be finite fractions in [0, 1).")
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("Odds evaluation time must include a timezone.")
     normalized = normalize_odds(raw_odds)
     model = {m["market_key"]: m for m in model_markets}
     by_book_market: dict[tuple[str, str], dict[str, Any]] = {}
@@ -129,19 +150,48 @@ def rank_opportunities(
                     over_p, under_p = devig_two_way(price, float(other["odd"]))
                     devig = over_p
         market_p = float(devig if devig is not None else p_market)
-        probability = float(m["probability"])
+        try:
+            probability = float(m["probability"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if not math.isfinite(probability) or not 0 <= probability <= 1:
+            continue
         edge = probability - market_p
         ev = expected_value(probability, price)
         eligible = bool(m.get("eligible_for_bet", False))
-        if not eligible:
-            decision = "RESEARCH"
-            reason = "Model/market has not passed the required OOS + data-quality gate yet."
-        elif edge >= min_edge and ev >= min_ev:
-            decision = "BET"
-            reason = "Eligible model and minimum edge + EV thresholds passed."
-        else:
-            decision = "NO BET"
-            reason = "Eligible model, but current price does not clear edge + EV thresholds."
+        reasons = []
+        if not eligible or m.get("predictive_validated") is not True:
+            reasons.append("Brak potwierdzonej walidacji predykcyjnej lub jakości danych.")
+        try:
+            updated = datetime.fromisoformat(str(row.get("update")).replace("Z", "+00:00"))
+            if updated.tzinfo is None:
+                raise ValueError("Timezone missing")
+            age = (now - updated).total_seconds() / 3600
+            fresh = 0 <= age <= max_odds_age_hours
+        except (TypeError, ValueError):
+            age, fresh = None, False
+        if not fresh:
+            reasons.append("Kurs nie ma potwierdzonej aktualności.")
+        interval = m.get("probability_interval")
+        conservative = probability
+        if interval is not None:
+            try:
+                lower = float(interval.get("lower") if isinstance(interval, dict) else interval[0])
+                upper = float(interval.get("upper") if isinstance(interval, dict) else interval[1])
+                if not (0 <= lower <= probability <= upper <= 1):
+                    raise ValueError("Invalid interval")
+                conservative = lower
+            except (TypeError, ValueError, IndexError, KeyError):
+                reasons.append("Nieprawidłowy przedział niepewności prognozy.")
+        if key.startswith("cards.") and (not m.get("settlement_rule") or row.get("settlement_rule") != m.get("settlement_rule")):
+            reasons.append("Niepotwierdzona zgodność zasad rozliczenia kartek.")
+        net_return = (1 - stake_cost_rate) * (1 + (price - 1) * (1 - winnings_cost_rate))
+        net_ev = probability * net_return - 1
+        conservative_ev = conservative * net_return - 1
+        if conservative - market_p < min_edge or conservative_ev < min_ev:
+            reasons.append("Konserwatywne edge i EV po kosztach nie spełniają progów.")
+        decision = "NO BET" if reasons else "BET"
+        reason = " ".join(reasons) if reasons else "Walidacja, aktualność kursu oraz konserwatywne edge i EV po kosztach spełniają progi."
         compared.append({
             **m,
             "bookmaker": row.get("bookmaker"),
@@ -152,6 +202,12 @@ def rank_opportunities(
             "devig_available": devig is not None,
             "edge": edge,
             "ev": ev,
+            "net_ev": net_ev,
+            "conservative_ev": conservative_ev,
+            "conservative_probability": conservative,
+            "cost_assumptions": {"stake_cost_rate": stake_cost_rate, "winnings_cost_rate": winnings_cost_rate, "configured": bool(stake_cost_rate or winnings_cost_rate)},
+            "odds_fresh": fresh,
+            "odds_age_hours": age,
             "decision": decision,
             "decision_reason": reason,
             "eligible_for_bet": eligible,
@@ -168,7 +224,7 @@ def rank_opportunities(
     for key, rows in grouped.items():
         polish = [r for r in rows if r.get("polish_bookmaker_hint")]
         candidates = polish if prefer_polish and polish else rows
-        best_rows.append(max(candidates, key=lambda r: (r["odds"], r["ev"])))
+        best_rows.append(max(candidates, key=lambda r: (r["decision"] == "BET", r["odds_fresh"], r["odds"], r["ev"])))
 
     best_rows.sort(key=lambda r: (r["decision"] == "BET", r.get("ev", -999), r.get("probability", 0), r.get("edge", -999)), reverse=True)
     opportunities = [r for r in best_rows if r["decision"] == "BET"]

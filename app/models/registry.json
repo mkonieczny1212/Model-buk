@@ -1,0 +1,14 @@
+{
+  "as_of": "2026-05-24 17:00:00",
+  "total_corners": {
+    "champion": "corner-total-v0.1-livefit",
+    "path": "live/v01",
+    "reason": "v0.1 beats v0.2 dual model on pre-2025 total-corners OOF MAE/RMSE and is also better on the already-open 2025/26 reference probability metrics."
+  },
+  "team_corners": {
+    "challenger": "corner-dual-v0.2-livefit",
+    "path": "live/v02",
+    "status": "experimental; no historical executable team-corners price validation yet"
+  },
+  "deployment_status": "research/paper only"
+}

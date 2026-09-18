@@ -3,18 +3,27 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import math
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import requests
 
 from model_buk.catalog import API_ID_TO_LEAGUE, LEAGUES, season_for_date
+from model_buk.security import safe_error as safe_provider_error, configure_system_tls, ProviderAccessError
 
 
 API_BASE = "https://v3.football.api-sports.io"
+
+
+def _utc(value: str | datetime) -> datetime:
+    dt = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        raise ValueError("Fixture timestamp requires an explicit timezone")
+    return dt.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -66,10 +75,13 @@ class ApiFootballClient:
         cache_dir: str | Path = "runtime/api_cache",
         timeout: int = 12,
     ):
-        self.api_key = (api_key or os.getenv("API_FOOTBALL_KEY") or "").strip()
+        configure_system_tls()
+        self.api_key = (api_key if api_key is not None else os.getenv("API_FOOTBALL_KEY", "")).strip()
         self.timeout = timeout
         self.cache = JsonCache(cache_dir)
         self._last_headers: dict[str, str] = {}
+        self._access_error: str | None = None
+        self._verified = False
         self._session = requests.Session()
 
     @property
@@ -80,6 +92,9 @@ class ApiFootballClient:
         return {
             "name": "API-Football",
             "connected": self.connected,
+            "configured": self.connected,
+            "verified": self._verified,
+            "access_error": self._access_error,
             "reason": None if self.connected else "Brak API_FOOTBALL_KEY — działa tryb historyczny/manualny.",
             "requests_remaining": self._last_headers.get("x-ratelimit-requests-remaining"),
             "requests_limit": self._last_headers.get("x-ratelimit-requests-limit"),
@@ -93,18 +108,25 @@ class ApiFootballClient:
         cached = self.cache.get(key, ttl)
         if cached is not None:
             return cached
-        response = self._session.get(
-            API_BASE + endpoint,
-            params=params,
-            headers={"x-apisports-key": self.api_key},
-            timeout=self.timeout,
-        )
-        self._last_headers = {k.lower(): v for k, v in response.headers.items()}
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._session.get(
+                API_BASE + endpoint,
+                params=params,
+                headers={"x-apisports-key": self.api_key},
+                timeout=self.timeout,
+            )
+            self._last_headers = {k.lower(): v for k, v in response.headers.items()}
+            response.raise_for_status()
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(safe_provider_error(exc)) from None
         errors = payload.get("errors") or []
         if errors:
-            raise RuntimeError(f"API-Football: {errors}")
+            code = "plan" if isinstance(errors, dict) and "plan" in errors else "quota" if isinstance(errors, dict) and ("requests" in errors or "rateLimit" in errors) else "parameters"
+            error = ProviderAccessError(code)
+            self._access_error = error.public_message
+            raise error
+        self._verified = True
         self.cache.put(key, payload)
         return payload
 
@@ -281,8 +303,13 @@ class ApiFootballClient:
 
     def odds(self, fixture_id: int) -> list[dict[str, Any]]:
         payload = self._get("/odds", {"fixture": fixture_id}, ttl=60 * 30)
+        fixture_rows = list(payload.get("response", []))
+        pages = max(1, int((payload.get("paging") or {}).get("total") or 1))
+        page_limit = max(1, min(10, int(os.getenv("MODEL_BUK_MAX_ODDS_PAGES", "3"))))
+        for page in range(2, min(pages, page_limit) + 1):
+            fixture_rows.extend(self._get("/odds", {"fixture": fixture_id, "page": page}, ttl=60 * 30).get("response", []))
         output: list[dict[str, Any]] = []
-        for fixture_row in payload.get("response", []):
+        for fixture_row in fixture_rows:
             update = fixture_row.get("update")
             for bookmaker in fixture_row.get("bookmakers") or []:
                 bname = bookmaker.get("name")
@@ -293,6 +320,8 @@ class ApiFootballClient:
                             odd = float(value.get("odd"))
                         except (TypeError, ValueError):
                             continue
+                        if not math.isfinite(odd) or odd <= 1:
+                            continue
                         output.append({
                             "bookmaker_id": bid,
                             "bookmaker": bname,
@@ -301,6 +330,7 @@ class ApiFootballClient:
                             "value": value.get("value"),
                             "odd": odd,
                             "update": update,
+                            "feed_complete": pages <= page_limit,
                         })
         return output
 
@@ -325,12 +355,16 @@ class ApiFootballClient:
         last: int = 6,
         league_id: int | None = None,
         season: int | None = None,
+        cutoff: str | datetime | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"team": team_id, "last": last}
         if league_id is not None:
             params["league"] = int(league_id)
         if season is not None:
             params["season"] = int(season)
+        if cutoff is not None:
+            # Provider supports a date boundary; exact time is enforced locally.
+            params["to"] = _utc(cutoff).date().isoformat()
         payload = self._get("/fixtures", params, ttl=60 * 30)
         output = []
         for row in payload.get("response", []):
@@ -339,9 +373,9 @@ class ApiFootballClient:
             output.append(self._normalize_fixture(row, spec.code if spec else None))
         return output
 
-    def fixture_statistics(self, fixture_id: int) -> dict[int, dict[str, float]]:
+    def fixture_statistics(self, fixture_id: int) -> dict[int, dict[str, float | None]]:
         payload = self._get("/fixtures/statistics", {"fixture": fixture_id}, ttl=60 * 60 * 24 * 7)
-        output: dict[int, dict[str, float]] = {}
+        output: dict[int, dict[str, float | None]] = {}
         mapping = {
             "shots on goal": "sot",
             "shots off goal": "shots_off",
@@ -364,7 +398,7 @@ class ApiFootballClient:
         }
         for row in payload.get("response", []):
             team_id = int((row.get("team") or {}).get("id") or 0)
-            stats: dict[str, float] = {}
+            stats: dict[str, float | None] = {}
             for item in row.get("statistics") or []:
                 stat_type = str(item.get("type") or "").strip().lower()
                 key = mapping.get(stat_type)
@@ -374,9 +408,10 @@ class ApiFootballClient:
                 if isinstance(value, str) and value.endswith("%"):
                     value = value[:-1]
                 try:
-                    stats[key] = float(value or 0)
+                    parsed = float(value) if value is not None and value != "" else None
+                    stats[key] = parsed if parsed is not None and math.isfinite(parsed) and parsed >= 0 else None
                 except (TypeError, ValueError):
-                    continue
+                    stats[key] = None
             if team_id:
                 output[team_id] = stats
         return output
@@ -384,34 +419,59 @@ class ApiFootballClient:
     def current_observations(
         self,
         team_id: int,
-        last: int = 6,
-        max_stat_calls: int = 6,
+        last: int = 20,
+        max_stat_calls: int = 20,
         league_id: int | None = None,
         season: int | None = None,
+        cutoff: str | datetime | None = None,
+        exclude_fixture_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch recent completed matches and their event counts on demand.
 
         Cost control: fixture list is one call; detailed statistics are capped and
         cached, so dashboard scanning never performs this work automatically.
         """
-        fixtures = self.recent_fixtures(team_id, last=last, league_id=league_id, season=season)
+        boundary = min(_utc(cutoff) if cutoff is not None else datetime.now(timezone.utc), datetime.now(timezone.utc))
+        fixtures = self.recent_fixtures(team_id, last=last, league_id=league_id, season=season, cutoff=boundary)
+        fixtures.sort(key=lambda f: f.get("kickoff") or "", reverse=True)
         output: list[dict[str, Any]] = []
         detailed_calls = 0
         for fixture in fixtures:
-            if fixture.get("status") not in {"FT", "AET", "PEN"}:
+            # AET/PEN statistics include extra time and cannot represent a 90-min
+            # market. FT alone is not enough: enforce availability before cutoff.
+            if fixture.get("status") != "FT" or fixture.get("fixture_id") == exclude_fixture_id:
+                continue
+            try:
+                played_at = _utc(fixture["kickoff"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            available_at = played_at + timedelta(hours=3)
+            if available_at >= boundary:
                 continue
             home = fixture["home"]
             away = fixture["away"]
             is_home = int(home.get("id") or 0) == int(team_id)
+            if not is_home and int(away.get("id") or 0) != int(team_id):
+                continue
+            opponent = away if is_home else home
             row = {
                 "date": fixture.get("kickoff"),
                 "fixture_id": fixture.get("fixture_id"),
+                "team_id": int(team_id),
+                "opponent_id": opponent.get("id"),
+                "league_id": fixture.get("league_id"),
+                "league_code": fixture.get("league_code"),
+                "season": fixture.get("season"),
+                "available_at": available_at.isoformat(),
+                "availability_basis": "kickoff_plus_3h_conservative_proxy",
+                "source": "api_football_completed_fixture",
                 "venue": "home" if is_home else "away",
                 "goals_for": home.get("goals") if is_home else away.get("goals"),
                 "goals_against": away.get("goals") if is_home else home.get("goals"),
                 "opponent": away.get("name") if is_home else home.get("name"),
             }
             if detailed_calls < max_stat_calls:
+                detailed_calls += 1
                 try:
                     stats = self.fixture_statistics(int(fixture["fixture_id"]))
                     own = stats.get(int(team_id), {})
@@ -421,8 +481,8 @@ class ApiFootballClient:
                         "shots_for": own.get("shots"), "shots_against": opp.get("shots"),
                         "sot_for": own.get("sot"), "sot_against": opp.get("sot"),
                         "corners_for": own.get("corners"), "corners_against": opp.get("corners"),
-                        "cards_for": (own.get("yellow", 0) or 0) + 2 * (own.get("red", 0) or 0),
-                        "cards_against": (opp.get("yellow", 0) or 0) + 2 * (opp.get("red", 0) or 0),
+                        "cards_for": own["yellow"] + 2 * own["red"] if own.get("yellow") is not None and own.get("red") is not None else None,
+                        "cards_against": opp["yellow"] + 2 * opp["red"] if opp.get("yellow") is not None and opp.get("red") is not None else None,
                         "xg_for": own.get("xg"), "xg_against": opp.get("xg"),
                         "possession_for": own.get("possession"), "possession_against": opp.get("possession"),
                         "blocked_shots_for": own.get("blocked_shots"), "blocked_shots_against": opp.get("blocked_shots"),
@@ -432,14 +492,23 @@ class ApiFootballClient:
                         "offsides_for": own.get("offsides"), "offsides_against": opp.get("offsides"),
                         "saves_for": own.get("saves"), "saves_against": opp.get("saves"),
                     })
-                    detailed_calls += 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    row["statistics_error"] = safe_provider_error(exc)
+            row["availability"] = {key: row.get(key) is not None for key in (
+                "goals_for", "goals_against", "shots_for", "shots_against",
+                "sot_for", "sot_against", "corners_for", "corners_against",
+                "cards_for", "cards_against", "xg_for", "xg_against",
+            )}
             output.append(row)
+            if len(output) >= last:
+                break
         return output
 
     def match_context(self, fixture_id: int, deep: bool = True) -> dict[str, Any]:
         fixture = self.fixture(fixture_id)
+        kickoff = _utc(fixture["kickoff"])
+        if kickoff <= datetime.now(timezone.utc) or fixture.get("status") not in {"NS", "TBD"}:
+            raise ValueError("Prematch analysis requires a future fixture that has not started")
         injuries: list[dict[str, Any]] = []
         lineups: list[dict[str, Any]] = []
         odds: list[dict[str, Any]] = []
@@ -452,7 +521,7 @@ class ApiFootballClient:
             if fixture.get("league_id") and fixture.get("season"):
                 coverage = self.league_coverage(int(fixture["league_id"]), int(fixture["season"]))
         except Exception as exc:
-            errors.append(f"coverage: {exc}")
+            errors.append(f"coverage: {safe_provider_error(exc)}")
 
         for label, fn in (
             ("injuries", lambda: self.injuries(fixture_id)),
@@ -467,20 +536,20 @@ class ApiFootballClient:
                 elif label == "odds": odds = value
                 else: benchmark = value
             except Exception as exc:
-                errors.append(f"{label}: {exc}")
+                errors.append(f"{label}: {safe_provider_error(exc)}")
 
         if deep:
             for side in ("home", "away"):
                 try:
                     current[side] = self.current_observations(
                         int(fixture[side]["id"]),
-                        last=8,
-                        max_stat_calls=6,
-                        league_id=int(fixture["league_id"]) if fixture.get("league_id") else None,
-                        season=int(fixture["season"]) if fixture.get("season") else None,
+                        last=max(1, min(50, int(os.getenv("MODEL_BUK_RECENT_MATCHES", "20")))),
+                        max_stat_calls=max(0, min(50, int(os.getenv("MODEL_BUK_MAX_STAT_CALLS", "12")))),
+                        cutoff=min(kickoff, datetime.now(timezone.utc)),
+                        exclude_fixture_id=fixture_id,
                     )
                 except Exception as exc:
-                    errors.append(f"recent_{side}: {exc}")
+                    errors.append(f"recent_{side}: {safe_provider_error(exc)}")
 
         return {
             "fixture": fixture,

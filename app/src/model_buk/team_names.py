@@ -87,18 +87,22 @@ def resolve_team_name(name: str, candidates: list[str]) -> tuple[str | None, flo
     if not target:
         return None, 0.0
 
-    variants = ALIAS_VARIANTS.get(target, ())
+    # Alias keys must undergo the same punctuation/accent normalization as input.
+    variants = next((forms for alias, forms in ALIAS_VARIANTS.items()
+                     if normalize_name(alias) == target), ())
     for variant in variants:
         if variant in candidates:
             return variant, 1.0
 
-    candidate_norm = {normalize_name(c): c for c in candidates}
-    if target in candidate_norm:
-        return candidate_norm[target], 1.0
+    candidate_norm: dict[str, list[str]] = {}
+    for candidate in candidates:
+        candidate_norm.setdefault(normalize_name(candidate), []).append(candidate)
+    if target in candidate_norm and len(candidate_norm[target]) == 1:
+        return candidate_norm[target][0], 1.0
     for variant in variants:
         norm = normalize_name(variant)
-        if norm in candidate_norm:
-            return candidate_norm[norm], 1.0
+        if norm in candidate_norm and len(candidate_norm[norm]) == 1:
+            return candidate_norm[norm][0], 1.0
 
     # Compare both the raw normalized input and all known variants. We retain a
     # conservative threshold; uncertain entity matches must fail rather than feed
@@ -111,6 +115,6 @@ def resolve_team_name(name: str, candidates: list[str]) -> tuple[str | None, flo
         score = max(SequenceMatcher(None, q, cand).ratio() for q in query_forms)
         if score > best_score:
             best_name, best_score = candidate, score
-    if best_score >= 0.72:
-        return best_name, best_score
+    # A high string similarity is not proof of club identity (e.g. Manchester
+    # United/City). Keep the score for diagnostics, but require an explicit alias.
     return None, best_score

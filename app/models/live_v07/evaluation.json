@@ -1,0 +1,43 @@
+{
+  "model": "live-gamma-poisson-v0.7",
+  "split": "test >= 2024-07-01; constant baseline estimated before split",
+  "selection": "Every twentieth chronological test fixture, before inspecting its result",
+  "validation_status": "research; historical domestic simulation is not validation of UEFA or API data",
+  "metrics": {
+    "goals": {
+      "n": 261,
+      "line": 2.5,
+      "brier": 0.23693221470595893,
+      "constant_baseline_brier": 0.25357779613259546,
+      "log_loss": 0.6667184622243985
+    },
+    "shots": {
+      "n": 256,
+      "line": 23.5,
+      "brier": 0.22418619190149439,
+      "constant_baseline_brier": 0.25658326829448624,
+      "log_loss": 0.6402767605348755
+    },
+    "sot": {
+      "n": 256,
+      "line": 7.5,
+      "brier": 0.23107153166533884,
+      "constant_baseline_brier": 0.24185263487648298,
+      "log_loss": 0.6532170335523537
+    },
+    "corners": {
+      "n": 256,
+      "line": 9.5,
+      "brier": 0.2429873114285066,
+      "constant_baseline_brier": 0.2536024501158216,
+      "log_loss": 0.6791991800074475
+    },
+    "cards": {
+      "n": 256,
+      "line": 4.5,
+      "brier": 0.23475831201180938,
+      "constant_baseline_brier": 0.23494088509357475,
+      "log_loss": 0.6618310325968226
+    }
+  }
+}

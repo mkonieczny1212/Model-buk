@@ -1,22 +1,25 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Model Buk v0.6.2 Server - PORT 8010 - NIE ZAMYKAJ
+title Model Buk v0.7.0 Server - PORT 8010 - NIE ZAMYKAJ
 
 echo ================================================
-echo          MODEL BUK v0.6.2 - START APLIKACJI
+echo          MODEL BUK v0.7.0 - START APLIKACJI
 echo ================================================
 echo.
 
 set "PY="
-where python >nul 2>nul && set "PY=python"
+py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
 if not defined PY (
-  where py >nul 2>nul && set "PY=py"
+  python -c "import sys; sys.exit(sys.version_info[:2] != (3,12))" >nul 2>nul && set "PY=python"
+)
+if not defined PY (
+  if exist "%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" set PY="%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 )
 
 if not defined PY (
-  echo [BLAD] Python nie jest widoczny w systemie.
-  echo Zamknij to okno, otworz nowe CMD i sprawdz: python --version
+  echo [BLAD] Nie znaleziono Python 3.12.
+  echo Zainstaluj Python 3.12 i uruchom plik ponownie.
   echo.
   pause
   exit /b 1
@@ -39,15 +42,18 @@ echo.
 echo [3/6] Instalacja / aktualizacja bibliotek...
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q --upgrade pip
 if errorlevel 1 goto :error
-".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r requirements.txt
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r requirements-lock.txt
 if errorlevel 1 goto :error
-".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -e .
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q --no-deps -e .
 if errorlevel 1 goto :error
 
 echo.
+".venv\Scripts\python.exe" scripts\artifact_manifest.py
+if errorlevel 1 goto :error
+
 echo [4/6] Sprawdzam live data...
 if defined API_FOOTBALL_KEY (
-  echo API-Football: PODLACZONE
+  echo API-Football: klucz skonfigurowany; dostep do danych sprawdzi aplikacja
 ) else (
   echo API-Football: brak klucza - aplikacja wystartuje w trybie historycznym/manualnym.
   echo Aby wlaczyc live data, uruchom USTAW_API_FOOTBALL.bat.
@@ -60,7 +66,7 @@ echo Serwer bedzie dzialal w TYM oknie. Nie zamykaj go podczas korzystania z apl
 echo.
 echo [6/6] Przegladarka otworzy sie automatycznie za kilka sekund...
 set "MODEL_BUK_PORT=8010"
-start "" /b .venv\Scripts\python.exe -c "import time,webbrowser; time.sleep(4); webbrowser.open('http://127.0.0.1:8010/?v=062')"
+start "" /b .venv\Scripts\python.exe -c "import time,webbrowser; time.sleep(4); webbrowser.open('http://127.0.0.1:8010/?v=070')"
 
 ".venv\Scripts\python.exe" -m model_buk.web.api
 if errorlevel 1 goto :error
@@ -74,3 +80,4 @@ echo Zrob screenshot tego okna i wyslij mi go w ChatGPT.
 echo ================================================
 pause
 exit /b 1
+

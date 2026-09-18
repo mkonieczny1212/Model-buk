@@ -20,14 +20,14 @@ DATA_READINESS: dict[str, dict[str, Any]] = {
         "current": "strong-for-basic-match-stats",
         "sources": ["API-Football current-season fixture stats", "Understat Big Five history", "club-football historical stats"],
         "model_status": "partial-active",
-        "note": "Recent same-league current-season goals/shots/SOT/corners/cards and xG when exposed enter the current-state layer. Full strength-of-schedule, manager-break and lineup-cause decomposition is not yet complete.",
+        "note": "Recent completed cross-competition match counts enter the live posterior when access and coverage permit. Full strength-of-schedule, manager-break and lineup-cause decomposition is not yet complete.",
     },
     "xg_process_big_five": {
         "historical": "strong",
         "current": "partial",
         "sources": ["Understat", "Footiqo", "API-Football when fixture coverage exposes xG"],
         "model_status": "goal-v0.6-active",
-        "note": "Local Understat has 19,763 Big-Five matches, 2014/15-2025/26, with xG/npxG/PPDA/deep/xPoints.",
+        "note": "See data/understat/source_manifest.json for refreshed seasons and provenance; training metadata distinguishes fit cutoff from latest state.",
     },
     "xg_process_other_primary_leagues": {
         "historical": "missing-uniform",
@@ -80,10 +80,10 @@ DATA_READINESS: dict[str, dict[str, Any]] = {
     },
     "uefa_competitions": {
         "historical": "not-integrated",
-        "current": "fixtures-via-api",
+        "current": "counts-when-provider-plan-permits",
         "sources": ["API-Football"],
-        "model_status": "live-visible-not-grade-A",
-        "note": "UCL/UEL/UECL fixtures are visible, but competition-specific historical feature backfill is still required for full model parity.",
+        "model_status": "live-research-predictions",
+        "note": "UCL/UEL/UECL predictions use observed team counts across competitions. Cross-league strength calibration and prospective validation remain required.",
     },
     "weather": {
         "historical": "not-needed-as-core",
@@ -103,3 +103,4 @@ def readiness_summary() -> dict[str, Any]:
         "critical_gaps": missing,
         "principle": "No missing feature receives an invented value or subjective probability weight.",
     }
+
