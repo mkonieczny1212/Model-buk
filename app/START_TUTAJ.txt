@@ -1,4 +1,4 @@
-MODEL BUK 0.7.0
+MODEL BUK 0.8.0
 
 Rozpakuj do NOWEGO folderu. Python 3.12.
 Uruchom URUCHOM_MODEL_BUK.bat; port 8010.
@@ -6,3 +6,4 @@ Nie kopiuj starego .venv. Szczegoly: README.md i docs/V07_ZALOZENIA_I_ZMIANY.md.
 
 Klucz API ustaw lokalnie. Plan Free API-Football nie udostepnia ostatnich meczow ani sezonu 2026.
 Prognozy bez dostepnych statystyk nie sa fabrykowane. NO BET to decyzja o kursie i walidacji, nie brak obliczen.
+Skaner PAPER wybiera single i kupony 2 z lacznym kursem 1.50-1.90. Podatek 12% jest liczony raz od kuponu.

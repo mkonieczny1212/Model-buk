@@ -523,12 +523,19 @@ class ApiFootballClient:
         except Exception as exc:
             errors.append(f"coverage: {safe_provider_error(exc)}")
 
-        for label, fn in (
-            ("injuries", lambda: self.injuries(fixture_id)),
-            ("lineups", lambda: self.lineups(fixture_id)),
-            ("odds", lambda: self.odds(fixture_id)),
-            ("prediction_benchmark", lambda: self.prediction_benchmark(fixture_id)),
-        ):
+        context_calls = [("odds", lambda: self.odds(fixture_id))]
+        if deep:
+            context_calls.extend(
+                [
+                    ("injuries", lambda: self.injuries(fixture_id)),
+                    ("lineups", lambda: self.lineups(fixture_id)),
+                    (
+                        "prediction_benchmark",
+                        lambda: self.prediction_benchmark(fixture_id),
+                    ),
+                ]
+            )
+        for label, fn in context_calls:
             try:
                 value = fn()
                 if label == "injuries": injuries = value

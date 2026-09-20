@@ -1,6 +1,6 @@
 {
-  "app_version": "0.7.0",
-  "source_base_commit": "7bd0be93910905749c7d1f458da51ad06e211d21",
+  "app_version": "0.8.0",
+  "source_base_commit": "fe3c64bec997f65e312c233b290a15c5a8ac1026",
   "files": {
     "data/canonical/epl_matches_v01.csv.gz": "5c2c0d59407dd1828e2d1b3b20d851ec885a04b3f096063b6cc83e5547deb844",
     "data/multileague/europe16_matches_v05.csv.gz": "3a53429866f3bfcec776e0b5c3d5cef351e41e0c5408abee0b2703298b386605",

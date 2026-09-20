@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "model-buk"
-version = "0.7.0"
+version = "0.8.0"
 description = "Reproducible football probability and market-value engine"
 requires-python = ">=3.11"
 dependencies = [

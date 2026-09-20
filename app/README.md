@@ -1,4 +1,13 @@
-# Model BUK 0.7.0
+# Model BUK 0.8.0
+
+Wersja 0.8 dodaje skaner strategii PAPER dla końcowych kursów 1,50–1,90.
+Obsługuje single oraz kupony dwuzdarzeniowe z różnych meczów, także pary
+1,30 × 1,30 = 1,69. Każda noga musi mieć dodatni konserwatywny edge i EV
+przed podatkiem, a cały kupon minimum 5% konserwatywnego EV netto. Polski
+podatek 12% jest liczony raz od całej stawki. Kupony i nowe modele pozostają
+PAPER do zebrania osobnej próby prospektywnej.
+
+Dokładna polityka skanera: [V08_SKANER_VALUE.md](docs/V08_SKANER_VALUE.md).
 
 Analiza przedmeczowa oparta na danych sportowych, bez kursów jako wejścia modelu.
 UEFA nie jest już automatycznie blokowana: każdy rynek jest liczony z dostępnych
@@ -41,7 +50,7 @@ joblib. Rozliczenia paper trading/CLV oraz pełna walidacja UEFA nie są gotowe.
 
 ## Dokumentacja wcześniejszej wersji (historyczna)
 
-Poniższy opis zachowano dla kontekstu. W razie różnic obowiązuje opis 0.7 powyżej.
+Poniższy opis zachowano dla kontekstu. W razie różnic obowiązuje opis 0.8 powyżej.
 
 # Model Buk v0.6.2 — Dynamic Match Analysis
 

@@ -34,6 +34,14 @@ class ManualAnalysisRequest(BaseModel):
     persist: bool = True
 
 
+class ScanRequest(BaseModel):
+    date: str
+    league_codes: list[str] | None = None
+    max_fixtures: int = Field(default=5, ge=1, le=10)
+    deep: bool = False
+    persist: bool = True
+
+
 def _paths() -> ServicePaths:
     return ServicePaths(
         history=Path(os.getenv("MODEL_BUK_HISTORY", "data/canonical/epl_matches_v01.csv.gz")),
@@ -70,7 +78,7 @@ def create_app(
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.7.0",
+        version="0.8.0",
         description="Multi-league, multi-market football probability + current-context research engine.",
     )
 
@@ -160,6 +168,33 @@ def create_app(
             raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+
+    @app.post("/api/scan")
+    def scan(request: ScanRequest) -> dict[str, Any]:
+        if analysis_service is None:
+            raise HTTPException(status_code=503, detail="v0.8 scan service unavailable")
+        if request.league_codes is not None and not any(request.league_codes):
+            raise HTTPException(status_code=422, detail="Wybierz co najmniej jedną ligę.")
+        try:
+            payload = analysis_service.scan_fixtures(
+                request.date,
+                request.league_codes,
+                max_fixtures=request.max_fixtures,
+                deep=request.deep,
+            )
+            if request.persist:
+                payload["scan_id"] = store.save_scan(payload)
+            return payload
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=safe_error(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+
+    @app.get("/api/scans")
+    def scans(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
+        return {"scans": store.recent_scans(limit)}
 
     # Legacy v0.4 corner endpoint remains available for reproducibility.
     @app.post("/api/predict/corners")

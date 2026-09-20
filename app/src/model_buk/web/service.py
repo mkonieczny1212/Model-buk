@@ -18,6 +18,7 @@ from model_buk.live_provider import ApiFootballClient
 from model_buk.multimarket import MultiMarketEngine, rebuild_markets_from_expected
 from model_buk.catalog import LEAGUES
 from model_buk.odds_parser import normalize_odds, rank_opportunities
+from model_buk.strategy import DEFAULT_STRATEGY, StrategyProfile, build_strategy_scan
 from model_buk.suite import LiveCornerSuite, load_live_corner_suite, predict_with_live_suite
 from model_buk.weather import weather_context
 
@@ -116,6 +117,7 @@ class MatchAnalysisService:
         self.corner_service: PredictionService | None = None
         self.goal_engine: DynamicGoalEngineV06 | None = None
         self.model_loading_errors: list[dict[str, str]] = []
+        self.strategy = DEFAULT_STRATEGY
         self.understat_history = pd.DataFrame()
         if self.paths.understat.exists():
             try:
@@ -139,7 +141,7 @@ class MatchAnalysisService:
         latest = max((x["history_through"] for x in leagues if x["history_through"]), default=None)
         return {
             "status": "ok" if (self.provider.connected or not self.multimarket.history.empty) and not self.model_loading_errors else "degraded",
-            "app_version": "0.7.0",
+            "app_version": "0.8.0",
             "deployment_status": "research / paper betting",
             "live_provider": self.provider.status(),
             "leagues": len(leagues),
@@ -156,6 +158,7 @@ class MatchAnalysisService:
             "data_policy": "If a feature is not historically trainable and OOS-tested, it is shown as context/quality gate rather than given an invented probability weight.",
             "data_readiness": readiness_summary(),
             "team_catalog_source": "API-Football current season" if self.provider.connected else "local historical fallback",
+            "strategy": self.strategy.to_dict(),
         }
 
     def leagues(self) -> list[dict[str, Any]]:
@@ -456,13 +459,36 @@ class MatchAnalysisService:
         analysis["model_readiness"].setdefault("cards", {"grade": "B", "eligible_for_bet": False, "reason": "Referee and lineup interactions are not yet trained OOS."})
 
         raw_odds = live.get("odds") or []
-        opportunities, compared = rank_opportunities(analysis["markets"], raw_odds)
+        opportunities, compared = rank_opportunities(
+            analysis["markets"],
+            raw_odds,
+            min_edge=self.strategy.min_conservative_edge,
+            min_ev=self.strategy.min_conservative_net_ev,
+            prefer_polish=False,
+            max_odds_age_hours=self.strategy.max_odds_age_hours,
+            stake_cost_rate=self.strategy.stake_tax_rate,
+            winnings_cost_rate=self.strategy.winnings_cost_rate,
+            min_odds=self.strategy.min_odds,
+            max_odds=self.strategy.max_odds,
+            fallback_probability_haircut=self.strategy.fallback_probability_haircut,
+            require_interval_for_bet=self.strategy.require_validated_interval_for_bet,
+            keep_all_bookmakers=True,
+        )
+        if self.strategy.mode == "PAPER":
+            for row in compared:
+                if row.get("decision") == "BET":
+                    row["decision"] = "PAPER"
+                    row["decision_reason"] = (
+                        "Kandydat spełnia progi ceny i wartości, ale aktywny profil "
+                        "działa w trybie PAPER do zakończenia walidacji prospektywnej."
+                    )
+            opportunities = []
         analysis["opportunities"] = opportunities[:12]
         analysis["market_comparison"] = compared
-        by_key = {r["market_key"]: r for r in compared}
+        by_key: dict[str, dict[str, Any]] = {}
+        for row in compared:
+            by_key.setdefault(str(row["market_key"]), row)
         candidates = self._model_only_candidates(analysis["markets"], limit=5)
-        analysis["top_candidates"] = [by_key.get(r["market_key"], r) for r in candidates]
-        analysis["top_candidates_mode"] = "highest_probability_diversified"
         best = max(analysis["markets"], key=lambda r: r["probability"], default=None)
         analysis["most_likely"] = by_key.get(best["market_key"], next((r for r in candidates if r["market_key"] == best["market_key"]), best)) if best else None
         analysis["recommendation_summary"] = {"decision": "BET" if opportunities else "NO BET", "bet_count": len(opportunities),
@@ -476,5 +502,73 @@ class MatchAnalysisService:
         analysis["prediction_scope"] = "prematch_90_minutes"
         analysis["prospective"] = pd.Timestamp(fixture["kickoff"]) > pd.Timestamp.now(tz="UTC")
         analysis["generated_at"] = datetime.now(timezone.utc).isoformat()
+        strategy_scan = build_strategy_scan([analysis], self.strategy)
+        strategy_candidates = strategy_scan["singles"]
+        if strategy_candidates:
+            analysis["top_candidates"] = strategy_candidates
+            analysis["top_candidates_mode"] = "paper_value_strategy"
+            analysis["recommendation_summary"] = {
+                "decision": strategy_candidates[0]["strategy_decision"],
+                "bet_count": len(opportunities),
+                "paper_count": len(strategy_candidates),
+                "reason": "Najlepsza propozycja przeszła profil wartości 1,50–1,90. Pozostaje PAPER do walidacji prospektywnej.",
+            }
+        else:
+            analysis["top_candidates"] = [by_key.get(r["market_key"], r) for r in candidates]
+            analysis["top_candidates_mode"] = "highest_probability_diversified"
+        analysis["strategy"] = strategy_scan
         return analysis
+
+    def scan_fixtures(
+        self,
+        date: str,
+        league_codes: list[str] | None = None,
+        *,
+        max_fixtures: int = 5,
+        deep: bool = False,
+        profile: StrategyProfile | None = None,
+    ) -> dict[str, Any]:
+        profile = profile or self.strategy
+        listing = self.fixtures(date, league_codes)
+        now = datetime.now(timezone.utc)
+        all_fixtures = listing.get("fixtures") or []
+        prospective_fixtures: list[dict[str, Any]] = []
+        for fixture in all_fixtures:
+            try:
+                kickoff = datetime.fromisoformat(str(fixture.get("kickoff")).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                continue
+            if kickoff.tzinfo is None:
+                kickoff = kickoff.replace(tzinfo=timezone.utc)
+            if kickoff > now and str(fixture.get("status") or "").upper() in {"NS", "TBD", "PST"}:
+                prospective_fixtures.append(fixture)
+        fixtures = prospective_fixtures[: max(1, min(int(max_fixtures), 10))]
+        analyses: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        for fixture in fixtures:
+            fixture_id = fixture.get("fixture_id")
+            try:
+                analyses.append(self.analyze_fixture(int(fixture_id), deep=deep))
+            except Exception as exc:
+                errors.append(
+                    {
+                        "fixture_id": fixture_id,
+                        "home_team": (fixture.get("home") or {}).get("name"),
+                        "away_team": (fixture.get("away") or {}).get("name"),
+                        "reason": safe_error(exc),
+                    }
+                )
+        result = build_strategy_scan(analyses, profile, errors=errors)
+        result.update(
+            {
+                "target_date": date,
+                "fixture_mode": listing.get("mode"),
+                "provider_message": listing.get("message"),
+                "requested_fixture_count": len(fixtures),
+                "skipped_non_prospective_count": len(all_fixtures) - len(prospective_fixtures),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "status": "completed_with_errors" if errors else "completed",
+            }
+        )
+        return result
 

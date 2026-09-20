@@ -23,7 +23,7 @@ class MatchAnalysisService(BaseMatchAnalysisService):
 
     def status(self) -> dict[str, Any]:
         payload = super().status()
-        payload["app_version"] = "0.7.0"
+        payload["app_version"] = "0.8.0"
         payload["secondary_providers"] = {
             "footystats": self.footystats.status(),
             "sportmonks": self.sportmonks.status(),

@@ -87,13 +87,13 @@ function renderFixtures(data){
   notice.classList.add('hidden');
   const rows=data.fixtures||[];
   if(!rows.length){list.innerHTML='<div class="empty-state">Brak meczów dla wybranych lig i dnia.</div>';return;}
-  list.innerHTML=rows.map(f=>`<button class="fixture-card" data-id="${f.fixture_id}">
+  list.innerHTML=rows.map(f=>{const future=new Date(f.kickoff).getTime()>Date.now()&&['NS','TBD','PST'].includes(String(f.status||'').toUpperCase());return `<button class="fixture-card" data-id="${f.fixture_id}" ${future?'':'disabled'}>
     <div class="fixture-top"><span>${esc(f.league_name||f.league_code)}</span><span>${esc(localDate(f.kickoff))}</span></div>
     <div class="team-row"><img src="${esc(f.home.logo||'')}" alt=""><b>${esc(f.home.name)}</b></div>
     <div class="team-row"><img src="${esc(f.away.logo||'')}" alt=""><b>${esc(f.away.name)}</b></div>
-    <div class="fixture-bottom"><span>${esc(f.round||'')}</span><strong>Analizuj →</strong></div>
-  </button>`).join('');
-  document.querySelectorAll('.fixture-card').forEach(card=>card.addEventListener('click',()=>analyzeFixture(Number(card.dataset.id))));
+    <div class="fixture-bottom"><span>${esc(f.round||'')}</span><strong>${future?'Analizuj →':'Mecz rozpoczęty / zakończony'}</strong></div>
+  </button>`}).join('');
+  document.querySelectorAll('.fixture-card:not([disabled])').forEach(card=>card.addEventListener('click',()=>analyzeFixture(Number(card.dataset.id))));
 }
 
 async function loadFixtures(){
@@ -106,6 +106,67 @@ async function loadFixtures(){
     renderFixtures(data);
   }catch(e){$('liveNotice').classList.remove('hidden');$('liveNotice').innerHTML=`<b>Błąd live data:</b> ${esc(e.message)}`}
   finally{btn.disabled=false;btn.textContent='Pobierz mecze'}
+}
+
+function scanSelectionCard(o){
+  return `<div class="scan-card">
+    <div class="scan-card-head"><span>#${esc(o.rank)} · ${esc(o.league?.name||o.league?.code||'')}</span><b>${esc(o.strategy_decision||'PAPER')}</b></div>
+    <strong>${esc(o.home_team)} — ${esc(o.away_team)}</strong>
+    <small class="muted">${esc(localDate(o.fixture_date))} · jakość danych ${esc(o.data_quality_score??'—')}/100 · kurs ${o.odds_age_hours===null||o.odds_age_hours===undefined?'bez czasu':esc(Number(o.odds_age_hours).toFixed(1)+' h temu')}</small>
+    <h4>${esc(o.label)}</h4>
+    <div class="scan-price">@${odd(o.odds)} <small>${esc(o.bookmaker||'—')}</small></div>
+    <div class="scan-metrics"><span>P konserw. <b>${pct(o.conservative_probability)}</b></span><span>Edge <b>${pp(o.conservative_edge)}</b></span><span>EV netto <b>${pct(o.conservative_net_ev)}</b></span></div>
+  </div>`;
+}
+
+function renderScan(data){
+  const summary=data.summary||{};
+  if(data.fixture_mode && data.fixture_mode!=='live'){
+    $('scanNotice').classList.remove('hidden');
+    $('scanNotice').innerHTML=`<b>Brak skanu live.</b> ${esc(data.provider_message||'Dostawca bieżących danych nie jest dostępny.')}`;
+  }
+  $('scanSummary').innerHTML=[
+    ['Mecze',`${data.fixture_count??0}/${data.requested_fixture_count??0}`],
+    ['Single',summary.single_count??0],
+    ['Kupony 2',summary.double_count??0],
+    ['Odrzucone',summary.rejected_count??0],
+    ['Błędy',(data.errors||[]).length],
+  ].map(([k,v])=>`<div class="system-card"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
+  const singles=data.singles||[];
+  const noFixtures=(data.requested_fixture_count??0)===0;
+  $('scanSingles').innerHTML=singles.length?singles.map(scanSelectionCard).join(''):`<div class="empty-state compact">${noFixtures?'Brak meczów do analizy dla wybranego dnia i lig.':'Brak singli spełniających wszystkie progi profilu.'}</div>`;
+  const doubles=data.doubles||[];
+  $('scanDoubles').innerHTML=doubles.length?doubles.map(t=>`<div class="scan-card combo">
+    <div class="scan-card-head"><span>#${esc(t.rank)} · AKO 2</span><b>${esc(t.strategy_decision||'PAPER')}</b></div>
+    ${(t.legs||[]).map(l=>`<div class="combo-leg"><strong>${esc(l.home_team)} — ${esc(l.away_team)}</strong><span>${esc(l.label)} @ ${odd(l.odds)}</span></div>`).join('')}
+    <div class="scan-price">${(t.legs||[]).map(l=>odd(l.odds)).join(' × ')} = <b>${odd(t.odds)}</b> <small>${esc(t.bookmaker||'—')}</small></div>
+    <div class="scan-metrics"><span>P konserw. <b>${pct(t.conservative_probability)}</b></span><span>Edge <b>${pp(t.conservative_edge)}</b></span><span>EV netto <b>${pct(t.conservative_net_ev)}</b></span></div>
+    <small class="muted">Prawdopodobieństwo łączne jest iloczynem nóg z różnych meczów. Ta metoda pozostaje PAPER do osobnej walidacji zależności; podatek jest liczony raz.</small>
+  </div>`).join(''):`<div class="empty-state compact">${noFixtures?'Brak meczów do analizy dla wybranego dnia i lig.':'Brak par o łącznym kursie 1,50–1,90 i EV netto co najmniej 5%.'}</div>`;
+  const errors=data.errors||[]; const notice=$('scanNotice');
+  if(errors.length){
+    notice.classList.remove('hidden');
+    notice.innerHTML=`<b>Skan ukończony z błędami ${errors.length} meczów.</b> ${errors.map(e=>esc(`${e.home_team||''}–${e.away_team||''}: ${e.reason||''}`)).join(' · ')}`;
+  }else if(!data.fixture_mode || data.fixture_mode==='live'){
+    notice.classList.remove('hidden');
+    notice.innerHTML=`<b>Snapshot PAPER #${esc(data.scan_id||'—')}</b> · ${esc(localDate(data.generated_at))} · profil ${esc(data.strategy_version||'—')}`;
+  }
+  const reasonLabels={target_odds:'kurs singla poza 1,50–1,90',stale_odds:'nieaktualny kurs',data_quality:'za małe pokrycie danych',edge:'edge poniżej 3 p.p.',net_ev:'EV netto poniżej 5%',settlement:'niezgodne zasady rozliczenia',devig:'brak pełnego rynku do de-vig',invalid_interval:'nieprawidłowa niepewność',uncertainty:'brak zwalidowanego przedziału niepewności',validation:'brak walidacji predykcyjnej',fixture_rank_limit:'niższy ranking w tym meczu',missing_probability:'brak prawdopodobieństwa',not_prospective:'mecz nie jest przyszły'};
+  const rejected=data.rejected||[]; $('scanRejectedPanel').classList.toggle('hidden',!rejected.length);
+  $('scanRejected').innerHTML=rejected.map(r=>`<div class="rejected-row"><span>${esc(r.home_team)} — ${esc(r.away_team)}</span><b>${esc(r.label||r.market_key)} @ ${odd(r.odds)}</b><small>${(r.reason_codes||[]).map(x=>esc(reasonLabels[x]||x)).join(' · ')}</small></div>`).join('');
+}
+
+async function runScan(){
+  const btn=$('runScan'); btn.disabled=true; btn.textContent='Skanowanie…';
+  const notice=$('scanNotice'); notice.classList.add('hidden');
+  $('scanSummary').innerHTML=''; $('scanSingles').innerHTML='<div class="empty-state compact">Skanowanie meczów i kursów…</div>'; $('scanDoubles').innerHTML='<div class="empty-state compact">Budowanie dozwolonych par po analizie singli…</div>'; $('scanRejectedPanel').classList.add('hidden');
+  try{
+    if(!state.selectedLeagues.size) throw new Error('Wybierz co najmniej jedną ligę.');
+    const body={date:$('fixtureDay').value,league_codes:[...state.selectedLeagues],max_fixtures:Number($('scanLimit').value),deep:false,persist:true};
+    const data=await api('/api/scan',{method:'POST',body:JSON.stringify(body)});
+    renderScan(data);
+  }catch(e){notice.classList.remove('hidden');notice.innerHTML=`<b>Nie udało się ukończyć skanu:</b> ${esc(e.message)}`}
+  finally{btn.disabled=false;btn.textContent='Skanuj wybrany dzień'}
 }
 
 function expectedCard(idTotal,idTeams,obj){
@@ -149,7 +210,7 @@ function renderOpportunities(a){
     return;
   }
   $('opportunityList').innerHTML=rows.slice(0,5).map((o,i)=>{
-    const decision=o.decision||'NO BET';
+    const decision=o.strategy_decision||o.decision||'NO BET';
     const grade=o.model_grade||'B';
     const scoreBits=[];
     if(o.edge!==null&&o.edge!==undefined) scoreBits.push(`edge ${pp(o.edge)}`);
@@ -252,6 +313,7 @@ $('manualForm').addEventListener('submit',async e=>{
   try{const body={league_code:$('manualLeague').value,date:new Date($('manualDate').value).toISOString(),home_team:$('manualHome').value,away_team:$('manualAway').value,persist:true}; const a=await api('/api/analyze/manual',{method:'POST',body:JSON.stringify(body)}); renderAnalysis(a); await loadRecent()}catch(ex){err.textContent=ex.message;err.classList.remove('hidden')}finally{btn.disabled=false;btn.textContent='Analizuj mecz'}
 });
 $('refreshFixtures').addEventListener('click',loadFixtures); $('refreshRecent').addEventListener('click',loadRecent);
+$('runScan').addEventListener('click',runScan);
 document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.scroll)?.scrollIntoView({behavior:'smooth'})));
 
 $('fixtureDay').value=todayLocal(); $('manualDate').value=tomorrowHour();

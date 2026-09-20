@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Model Buk v0.7.0</title>
+  <title>Model Buk v0.8.0</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -15,6 +15,7 @@
       </div>
       <nav>
         <button class="nav-item active" data-scroll="dashboard">Dzisiaj</button>
+        <button class="nav-item" data-scroll="scannerPanel">Skaner dnia</button>
         <button class="nav-item" data-scroll="analysisPanel">Analiza meczu</button>
         <button class="nav-item" data-scroll="recentPanel">Rejestr predykcji</button>
         <button class="nav-item" data-scroll="systemPanel">System</button>
@@ -28,7 +29,7 @@
     <main class="content">
       <header class="topbar">
         <div>
-          <div class="eyebrow">MODEL BUK · v0.7.0</div>
+          <div class="eyebrow">MODEL BUK · v0.8.0</div>
           <h1>Match Analysis Dashboard</h1>
           <p>Bieżące i historyczne dane, prawdopodobieństwa oraz jawne warunki BET / NO BET.</p>
         </div>
@@ -68,6 +69,38 @@
         </div>
       </section>
 
+      <section id="scannerPanel" class="section">
+        <div class="section-head">
+          <div>
+            <span class="kicker">Strategia PAPER · 1,50–1,90</span>
+            <h2>Skaner value betów dnia</h2>
+            <p class="muted">Single i kupony podwójne z różnych meczów. Przykład: 1,30 × 1,30 = 1,69. Podatek 12% jest liczony raz od całego kuponu.</p>
+          </div>
+          <div class="scan-controls">
+            <label>Limit meczów
+              <select id="scanLimit"><option selected>5</option><option>10</option></select>
+            </label>
+            <button id="runScan" class="button primary">Skanuj wybrany dzień</button>
+          </div>
+        </div>
+        <div id="scanNotice" class="notice hidden"></div>
+        <div id="scanSummary" class="scan-summary"></div>
+        <div class="scan-columns">
+          <div>
+            <div class="block-head"><div><span class="kicker">Final odds 1,50–1,90</span><h3>Single</h3></div></div>
+            <div id="scanSingles" class="scan-list"><div class="empty-state compact">Uruchom skaner, aby zobaczyć propozycje.</div></div>
+          </div>
+          <div>
+            <div class="block-head"><div><span class="kicker">Dwa różne mecze</span><h3>Kupony łączone</h3></div></div>
+            <div id="scanDoubles" class="scan-list"><div class="empty-state compact">Kupony pozostają w trybie PAPER.</div></div>
+          </div>
+        </div>
+        <details id="scanRejectedPanel" class="panel-block market-details hidden">
+          <summary><div><span class="kicker">Audyt filtrów</span><h3>Odrzucone propozycje</h3></div><span class="details-hint">Rozwiń →</span></summary>
+          <div id="scanRejected" class="details-body scan-rejected"></div>
+        </details>
+      </section>
+
       <section id="analysisPanel" class="section analysis hidden">
         <div class="match-hero">
           <div class="match-title-wrap">
@@ -93,8 +126,8 @@
 
         <div class="panel-block primary-opportunities">
           <div class="block-head">
-            <div><span class="kicker">Ranking prawdopodobieństwa</span><h3>Najlepsze propozycje dla tego meczu</h3></div>
-            <span class="help-text">Najbardziej prawdopodobne zdarzenia z różnych rodzin rynków. Wysokie prawdopodobieństwo nie oznacza opłacalnego zakładu. BET wymaga walidacji, aktualnego kursu i dodatniej wartości po uwzględnieniu niepewności. Typy z jednego meczu mogą być skorelowane.</span>
+            <div><span class="kicker">Ranking wartości</span><h3>Najlepsze propozycje dla tego meczu</h3></div>
+            <span class="help-text">Shortlista wartości, a przy braku porównywalnych kursów — zróżnicowany ranking prawdopodobieństwa modelu. BET wymaga walidacji, aktualnego kursu i dodatniej wartości po uwzględnieniu niepewności.</span>
           </div>
           <p id="recommendationSummary" class="muted"></p>
           <div id="opportunityList" class="opportunity-grid"></div>
@@ -116,7 +149,7 @@
               <div><b>Kurs bukmachera</b> — najlepsza dostępna cena z feedu.</div>
               <div><b>P rynku</b> — prawdopodobieństwo po usunięciu marży, jeśli znamy komplet rynku.</div>
               <div><b>Edge</b> — Model P minus P rynku.</div>
-              <div><b>EV netto</b> — oczekiwana stopa zwrotu po skonfigurowanych kosztach. Domyślnie koszty wynoszą zero; zasady operatora należy skonfigurować przed użyciem zakładu.</div>
+              <div><b>EV netto</b> — oczekiwana stopa zwrotu po kosztach. Profil PL v1 stosuje 12% podatku od stawki; promocje operatora wymagają osobnego profilu.</div>
             </div>
             <div class="table-wrap">
               <table class="market-table">

@@ -16,7 +16,7 @@ def main():
             for file in sorted((ROOT/folder).rglob('*')):
                 if file.is_file() and '__pycache__' not in file.parts:
                     files[file.relative_to(ROOT).as_posix()]=hashlib.sha256(file.read_bytes()).hexdigest()
-        path.write_text(json.dumps({'app_version':'0.7.0','source_base_commit':'7bd0be93910905749c7d1f458da51ad06e211d21','files':files},indent=2),encoding='utf-8')
+        path.write_text(json.dumps({'app_version':'0.8.0','source_base_commit':'fe3c64bec997f65e312c233b290a15c5a8ac1026','files':files},indent=2),encoding='utf-8')
     manifest=json.loads(path.read_text(encoding='utf-8'))
     problems=[]
     for rel,digest in manifest['files'].items():
