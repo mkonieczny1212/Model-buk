@@ -307,6 +307,44 @@ async function loadRecent(){
   try{const {predictions}=await api('/api/predictions?limit=12'); $('recentList').innerHTML=predictions.length?predictions.map(p=>`<div class="recent-item"><div><strong>${esc(p.home_team)} — ${esc(p.away_team)}</strong><small>${esc(localDate(p.fixture_date))} · #${p.id}</small></div><span>${esc(p.model_version)}</span><b class="${p.decision==='BET'?'positive':''}">${esc(p.decision||'PURE')}</b></div>`).join(''):'<div class="empty-state compact">Brak zapisanych predykcji.</div>'}catch(e){$('recentList').innerHTML=`<div class="error">${esc(e.message)}</div>`}
 }
 
+function validationRows(groups){
+  const rows=Object.entries(groups||{});
+  if(!rows.length) return '<div class="empty-state compact">Brak rozliczonej próby.</div>';
+  return `<div class="table-wrap"><table class="market-table"><thead><tr><th>Segment</th><th>N</th><th>ROI</th><th>CLV</th><th>ECE</th></tr></thead><tbody>${rows.map(([name,x])=>`<tr><td>${esc(name)}</td><td>${esc(x.count??0)}</td><td class="${x.roi>0?'positive':''}">${pct(x.roi)}</td><td class="${x.mean_clv>0?'positive':''}">${pct(x.mean_clv)}</td><td>${pct(x.ece)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+async function loadValidation(){
+  try{
+    const [report,maintenance]=await Promise.all([api('/api/validation/report'),api('/api/maintenance/status')]);
+    const o=report.overall||{}; const gate=report.promotion_gate||{}; const checks=gate.checks||{};
+    const decision=$('validationDecision');
+    decision.className=`validation-decision ${gate.eligible_for_bet?'eligible':'paper'}`;
+    decision.innerHTML=`<strong>${esc(gate.decision||'PAPER')}</strong><span>${gate.eligible_for_bet?'Brama walidacyjna spełniona.':'Model pozostaje w trybie PAPER.'}</span><small>Automatyka: ${maintenance.automatic?`co ${Math.round((maintenance.interval_seconds||0)/60)} min`:'tylko ręcznie'}${maintenance.last_result?.at?` · ostatnio ${esc(localDate(maintenance.last_result.at))}`:''}</small>`;
+    $('validationSummary').innerHTML=[
+      ['Rozliczone single',`${o.count||0} / ${gate.minimum_sample||200}`],
+      ['ROI',pct(o.roi)],['Dolna 95% ROI',pct(o.roi_lower_95)],
+      ['Średni CLV',pct(o.mean_clv)],['Dolna 95% CLV',pct(o.clv_lower_95)],
+      ['Brier',num(o.brier)],['ECE',pct(o.ece)],
+      ['Warunki',`${Object.values(checks).filter(Boolean).length}/${Object.keys(checks).length}`]
+    ].map(([k,v])=>`<div class="system-card"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
+    $('validationMarkets').innerHTML=validationRows(report.by_market);
+    $('validationLeagues').innerHTML=validationRows(report.by_league);
+    const t=report.tickets||{}; const tg=report.ticket_promotion_gate||{};
+    $('ticketValidation').innerHTML=`<b>Kupony łączone: ${esc(tg.decision||'PAPER')}</b> · rozliczone ${esc(t.count||0)} · ROI ${pct(t.roi)} · CLV ${pct(t.mean_clv)}. ${esc(tg.reason||'')}`;
+  }catch(e){$('validationDecision').className='validation-decision paper';$('validationDecision').textContent=`Raport niedostępny: ${e.message}`}
+}
+
+async function runMaintenance(){
+  const btn=$('runMaintenance'); const notice=$('maintenanceNotice'); btn.disabled=true; btn.textContent='Przetwarzanie…'; notice.classList.add('hidden');
+  try{
+    const x=await api('/api/maintenance/run',{method:'POST'}); const c=x.captured||{}; const s=x.settled||{};
+    notice.classList.remove('hidden');
+    notice.innerHTML=`<b>Cykl zakończony.</b> Kursy: ${esc(c.snapshots_saved||0)} nowych snapshotów z ${esc(c.fixtures_checked||0)} meczów. Rozliczenia: ${esc(s.entries_settled||0)} typów i ${esc(s.tickets_settled||0)} kuponów.${(c.errors||[]).length+(s.errors||[]).length?` Błędy dostawcy: ${(c.errors||[]).length+(s.errors||[]).length}.`:''}`;
+    await loadValidation();
+  }catch(e){notice.classList.remove('hidden');notice.innerHTML=`<b>Cykl nie został ukończony:</b> ${esc(e.message)}`}
+  finally{btn.disabled=false;btn.textContent='Pobierz kursy i rozlicz'}
+}
+
 $('manualLeague').addEventListener('change',loadManualTeams);
 $('manualForm').addEventListener('submit',async e=>{
   e.preventDefault(); const err=$('manualError'); const btn=$('manualAnalyze'); err.classList.add('hidden'); btn.disabled=true; btn.textContent='Analiza…';
@@ -314,8 +352,9 @@ $('manualForm').addEventListener('submit',async e=>{
 });
 $('refreshFixtures').addEventListener('click',loadFixtures); $('refreshRecent').addEventListener('click',loadRecent);
 $('runScan').addEventListener('click',runScan);
+$('refreshValidation').addEventListener('click',loadValidation); $('runMaintenance').addEventListener('click',runMaintenance);
 document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.scroll)?.scrollIntoView({behavior:'smooth'})));
 
 $('fixtureDay').value=todayLocal(); $('manualDate').value=tomorrowHour();
-Promise.all([loadStatus(),loadLeagues(),loadRecent()]).then(loadFixtures).catch(e=>console.error(e));
+Promise.all([loadStatus(),loadLeagues(),loadRecent(),loadValidation()]).then(loadFixtures).catch(e=>console.error(e));
 

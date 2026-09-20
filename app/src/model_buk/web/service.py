@@ -141,7 +141,7 @@ class MatchAnalysisService:
         latest = max((x["history_through"] for x in leagues if x["history_through"]), default=None)
         return {
             "status": "ok" if (self.provider.connected or not self.multimarket.history.empty) and not self.model_loading_errors else "degraded",
-            "app_version": "0.8.0",
+            "app_version": "0.9.0",
             "deployment_status": "research / paper betting",
             "live_provider": self.provider.status(),
             "leagues": len(leagues),
@@ -159,6 +159,11 @@ class MatchAnalysisService:
             "data_readiness": readiness_summary(),
             "team_catalog_source": "API-Football current season" if self.provider.connected else "local historical fallback",
             "strategy": self.strategy.to_dict(),
+            "validation": {
+                "mode": "prospective_closed_loop",
+                "promotion_gate": "n>=200, ROI lower 95% > 0, CLV lower 95% > 0, ECE <= 5pp",
+                "automatic_maintenance": True,
+            },
         }
 
     def leagues(self) -> list[dict[str, Any]]:

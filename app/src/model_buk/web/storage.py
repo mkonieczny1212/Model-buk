@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -162,10 +163,53 @@ class PredictionStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS closing_odds_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    captured_at TEXT NOT NULL,
+                    fixture_id INTEGER NOT NULL,
+                    bookmaker TEXT NOT NULL,
+                    bookmaker_id TEXT,
+                    market_key TEXT NOT NULL,
+                    odds REAL NOT NULL,
+                    provider_update TEXT,
+                    raw_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ticket_settlements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticket_id INTEGER NOT NULL UNIQUE REFERENCES scan_tickets(id),
+                    settled_at TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    closing_odds REAL,
+                    clv REAL,
+                    payout REAL NOT NULL,
+                    pnl REAL NOT NULL,
+                    raw_json TEXT NOT NULL
+                )
+                """
+            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_runs_created_at ON scan_runs(created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_selections_run ON scan_selections(scan_run_id, rank)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_tickets_run ON scan_tickets(scan_run_id, rank)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ticket_legs_ticket ON ticket_legs(ticket_id, leg_number)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_closing_fixture_market ON closing_odds_snapshots(fixture_id, market_key, captured_at DESC)")
+            # Forward compatible upgrades for databases created by development
+            # builds before the complete v0.9 settlement schema was frozen.
+            ticket_columns = {row[1] for row in conn.execute("PRAGMA table_info(ticket_settlements)")}
+            for name, declaration in (
+                ("closing_odds", "REAL"),
+                ("clv", "REAL"),
+                ("payout", "REAL NOT NULL DEFAULT 0"),
+                ("pnl", "REAL NOT NULL DEFAULT 0"),
+                ("raw_json", "TEXT NOT NULL DEFAULT '{}'")
+            ):
+                if name not in ticket_columns:
+                    conn.execute(f"ALTER TABLE ticket_settlements ADD COLUMN {name} {declaration}")
 
     def save(self, payload: dict[str, Any]) -> int:
         fixture = payload.get("fixture", {})
@@ -353,6 +397,286 @@ class PredictionStore:
                 "strategy_version": str(row["strategy_version"]),
                 "status": str(row["status"]),
                 "payload": json.loads(row["payload_json"]),
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def _kickoff(payload: dict[str, Any]) -> datetime | None:
+        value = payload.get("fixture_date") or payload.get("kickoff")
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            return None
+
+    def pending_entries_for_closing(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            singles = conn.execute(
+                """
+                SELECT s.id, s.fixture_id, s.market_key, s.bookmaker, s.odds, s.payload_json
+                FROM scan_selections s
+                LEFT JOIN selection_settlements x ON x.selection_id=s.id
+                WHERE x.id IS NULL
+                """
+            ).fetchall()
+            legs = conn.execute(
+                """
+                SELECT l.id, l.fixture_id, l.market_key, l.bookmaker, l.odds, l.payload_json
+                FROM ticket_legs l
+                LEFT JOIN ticket_leg_settlements x ON x.ticket_leg_id=l.id
+                WHERE x.id IS NULL
+                """
+            ).fetchall()
+        for row in [*singles, *legs]:
+            payload = json.loads(row["payload_json"])
+            kickoff = self._kickoff(payload)
+            if kickoff is not None and start <= kickoff <= end:
+                rows.append({**dict(row), **{"payload": payload, "kickoff": kickoff.isoformat()}})
+        return rows
+
+    def pending_settlement_entries(self, limit: int = 100) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 1000))
+        output: list[dict[str, Any]] = []
+        with self._connect() as conn:
+            singles = conn.execute(
+                """
+                SELECT s.id, s.fixture_id, s.market_key, s.bookmaker, s.odds, s.payload_json
+                FROM scan_selections s
+                LEFT JOIN selection_settlements x ON x.selection_id=s.id
+                WHERE x.id IS NULL ORDER BY s.id
+                """
+            ).fetchall()
+            legs = conn.execute(
+                """
+                SELECT l.id, l.fixture_id, l.market_key, l.bookmaker, l.odds, l.payload_json
+                FROM ticket_legs l
+                LEFT JOIN ticket_leg_settlements x ON x.ticket_leg_id=l.id
+                WHERE x.id IS NULL ORDER BY l.id
+                """
+            ).fetchall()
+        settlement_cutoff = datetime.now(timezone.utc) - timedelta(minutes=100)
+        for entry_type, rows in (("single", singles), ("ticket_leg", legs)):
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                kickoff = self._kickoff(payload)
+                if kickoff is None or kickoff > settlement_cutoff:
+                    continue
+                output.append(
+                    {
+                        **dict(row),
+                        "entry_type": entry_type,
+                        "bookmaker_id": payload.get("bookmaker_id"),
+                        "kickoff": kickoff.isoformat(),
+                    }
+                )
+        return output[:limit]
+
+    def save_closing_odds(self, fixture_id: int, row: dict[str, Any]) -> bool:
+        market_key = row.get("market_key")
+        try:
+            odds = float(row["odd"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if not market_key or odds <= 1:
+            return False
+        captured_at = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            identity_sql = " AND bookmaker_id=?" if row.get("bookmaker_id") is not None else " AND bookmaker=?"
+            identity_value = str(row.get("bookmaker_id")) if row.get("bookmaker_id") is not None else str(row.get("bookmaker") or "")
+            latest = conn.execute(
+                f"""
+                SELECT odds, provider_update FROM closing_odds_snapshots
+                WHERE fixture_id=? AND market_key=? {identity_sql}
+                ORDER BY id DESC LIMIT 1
+                """,
+                (fixture_id, str(market_key), identity_value),
+            ).fetchone()
+            if latest and float(latest["odds"]) == odds and latest["provider_update"] == row.get("update"):
+                return False
+            conn.execute(
+                """
+                INSERT INTO closing_odds_snapshots (
+                    captured_at, fixture_id, bookmaker, bookmaker_id,
+                    market_key, odds, provider_update, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    captured_at,
+                    int(fixture_id),
+                    str(row.get("bookmaker") or ""),
+                    str(row.get("bookmaker_id")) if row.get("bookmaker_id") is not None else None,
+                    str(market_key),
+                    odds,
+                    row.get("update"),
+                    json.dumps(row, ensure_ascii=False),
+                ),
+            )
+        return True
+
+    def latest_closing_odds(
+        self,
+        fixture_id: int,
+        market_key: str,
+        bookmaker: str | None,
+        bookmaker_id: Any = None,
+        kickoff: str | None = None,
+    ) -> dict[str, Any] | None:
+        sql = "SELECT * FROM closing_odds_snapshots WHERE fixture_id=? AND market_key=?"
+        params: list[Any] = [int(fixture_id), str(market_key)]
+        if bookmaker_id not in (None, ""):
+            sql += " AND bookmaker_id=?"
+            params.append(str(bookmaker_id))
+        elif bookmaker:
+            sql += " AND bookmaker=?"
+            params.append(str(bookmaker))
+        if kickoff:
+            sql += " AND captured_at<=?"
+            params.append(str(kickoff))
+        sql += " ORDER BY captured_at DESC, id DESC LIMIT 1"
+        with self._connect() as conn:
+            row = conn.execute(sql, tuple(params)).fetchone()
+        return dict(row) if row else None
+
+    def settle_selection(
+        self,
+        selection_id: int,
+        outcome: dict[str, Any],
+        closing_odds: float | None,
+        clv: float | None,
+        payout: float,
+        pnl: float,
+    ) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO selection_settlements (
+                    selection_id, settled_at, result, closing_odds, clv,
+                    payout, pnl, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (selection_id, datetime.now(timezone.utc).isoformat(), outcome["result"], closing_odds, clv, payout, pnl, json.dumps(outcome, ensure_ascii=False)),
+            )
+        return cur.rowcount == 1
+
+    def settle_ticket_leg(
+        self,
+        leg_id: int,
+        outcome: dict[str, Any],
+        closing_odds: float | None,
+        clv: float | None,
+    ) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO ticket_leg_settlements (
+                    ticket_leg_id, settled_at, result, closing_odds, clv, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (leg_id, datetime.now(timezone.utc).isoformat(), outcome["result"], closing_odds, clv, json.dumps(outcome, ensure_ascii=False)),
+            )
+        return cur.rowcount == 1
+
+    def aggregate_ticket_settlements(self, stake_tax_rate: float = 0.12) -> int:
+        settled = 0
+        with self._connect() as conn:
+            tickets = conn.execute(
+                """
+                SELECT t.id, t.combined_odds
+                FROM scan_tickets t
+                LEFT JOIN ticket_settlements x ON x.ticket_id=t.id
+                WHERE x.id IS NULL
+                """
+            ).fetchall()
+            for ticket in tickets:
+                legs = conn.execute(
+                    """
+                    SELECT l.id, l.odds, x.result, x.closing_odds FROM ticket_legs l
+                    LEFT JOIN ticket_leg_settlements x ON x.ticket_leg_id=l.id
+                    WHERE l.ticket_id=? ORDER BY l.leg_number
+                    """,
+                    (ticket["id"],),
+                ).fetchall()
+                if not legs or any(row["result"] is None for row in legs):
+                    continue
+                results = [str(row["result"]) for row in legs]
+                result = "LOST" if "LOST" in results else "VOID" if all(x == "VOID" for x in results) else "WON"
+                effective_odds = float(ticket["combined_odds"])
+                if result == "WON" and "VOID" in results:
+                    active_ids = [int(row["id"]) for row in legs if row["result"] == "WON"]
+                    placeholders = ",".join("?" for _ in active_ids)
+                    active = conn.execute(f"SELECT odds FROM ticket_legs WHERE id IN ({placeholders})", active_ids).fetchall()
+                    effective_odds = math.prod(float(row["odds"]) for row in active)
+                closing_prices = [float(row["closing_odds"]) for row in legs if row["result"] != "VOID" and row["closing_odds"] is not None]
+                active_leg_count = sum(row["result"] != "VOID" for row in legs)
+                closing_odds = math.prod(closing_prices) if len(closing_prices) == active_leg_count and active_leg_count else None
+                ticket_clv = effective_odds / closing_odds - 1 if closing_odds and closing_odds > 1 else None
+                if result == "WON":
+                    payout = (1 - stake_tax_rate) * effective_odds
+                    pnl = payout - 1
+                elif result == "LOST":
+                    payout, pnl = 0.0, -1.0
+                else:
+                    payout, pnl = 1.0, 0.0
+                conn.execute(
+                    """
+                    INSERT INTO ticket_settlements (
+                        ticket_id, settled_at, result, closing_odds, clv,
+                        payout, pnl, raw_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (ticket["id"], datetime.now(timezone.utc).isoformat(), result, closing_odds, ticket_clv, payout, pnl, json.dumps({"leg_results": results, "effective_odds": effective_odds})),
+                )
+                settled += 1
+        return settled
+
+    def validation_rows(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.odds, s.payload_json, x.result, x.clv, x.pnl
+                FROM scan_selections s
+                JOIN selection_settlements x ON x.selection_id=s.id
+                WHERE x.result IN ('WON','LOST')
+                ORDER BY s.id
+                """
+            ).fetchall()
+        output = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            league = payload.get("league") or {}
+            output.append(
+                {
+                    "odds": float(row["odds"]),
+                    "probability": float(payload.get("probability") or payload.get("conservative_probability")),
+                    "outcome": 1 if row["result"] == "WON" else 0,
+                    "pnl": float(row["pnl"]),
+                    "clv": row["clv"],
+                    "market_group": payload.get("group") or str(payload.get("market_key") or "").split(".")[0],
+                    "league_code": league.get("code") or payload.get("league_code"),
+                }
+            )
+        return output
+
+    def ticket_validation_rows(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.combined_odds, t.conservative_probability, x.result, x.pnl, x.clv
+                FROM scan_tickets t JOIN ticket_settlements x ON x.ticket_id=t.id
+                WHERE x.result IN ('WON','LOST') ORDER BY t.id
+                """
+            ).fetchall()
+        return [
+            {
+                "odds": float(row["combined_odds"]),
+                "probability": float(row["conservative_probability"]),
+                "outcome": 1 if row["result"] == "WON" else 0,
+                "pnl": float(row["pnl"]),
+                "clv": row["clv"],
+                "market_group": "double",
+                "league_code": "multi",
             }
             for row in rows
         ]

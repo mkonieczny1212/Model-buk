@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Model Buk v0.8.0</title>
+  <title>Model BUK v0.9.0</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -17,6 +17,7 @@
         <button class="nav-item active" data-scroll="dashboard">Dzisiaj</button>
         <button class="nav-item" data-scroll="scannerPanel">Skaner dnia</button>
         <button class="nav-item" data-scroll="analysisPanel">Analiza meczu</button>
+        <button class="nav-item" data-scroll="validationPanel">Walidacja</button>
         <button class="nav-item" data-scroll="recentPanel">Rejestr predykcji</button>
         <button class="nav-item" data-scroll="systemPanel">System</button>
       </nav>
@@ -29,7 +30,7 @@
     <main class="content">
       <header class="topbar">
         <div>
-          <div class="eyebrow">MODEL BUK · v0.8.0</div>
+          <div class="eyebrow">MODEL BUK · v0.9.0</div>
           <h1>Match Analysis Dashboard</h1>
           <p>Bieżące i historyczne dane, prawdopodobieństwa oraz jawne warunki BET / NO BET.</p>
         </div>
@@ -175,6 +176,28 @@
           <div class="block-head"><div><span class="kicker">Benchmarks</span><h3>Porównania pomocnicze</h3></div></div>
           <div id="benchmarkList"></div>
         </div>
+      </section>
+
+      <section id="validationPanel" class="section">
+        <div class="section-head">
+          <div>
+            <span class="kicker">Closed loop · CLV · kalibracja</span>
+            <h2>Walidacja prospektywna</h2>
+            <p class="muted">Kursy zamknięcia są przechwytywane przed startem, a zapisane typy rozliczane po meczu. Przejście z PAPER wymaga łącznie co najmniej 200 rozliczonych singli, dodatnich dolnych granic 95% dla ROI i CLV oraz ECE ≤ 5 p.p.</p>
+          </div>
+          <div class="validation-actions">
+            <button id="refreshValidation" class="button secondary">Odśwież raport</button>
+            <button id="runMaintenance" class="button primary">Pobierz kursy i rozlicz</button>
+          </div>
+        </div>
+        <div id="maintenanceNotice" class="notice hidden"></div>
+        <div id="validationDecision" class="validation-decision">Ładowanie raportu…</div>
+        <div id="validationSummary" class="system-grid"></div>
+        <div class="validation-columns">
+          <div class="panel-block"><div class="block-head"><div><span class="kicker">Segmenty</span><h3>Według rynku</h3></div></div><div id="validationMarkets" class="validation-table"></div></div>
+          <div class="panel-block"><div class="block-head"><div><span class="kicker">Segmenty</span><h3>Według ligi</h3></div></div><div id="validationLeagues" class="validation-table"></div></div>
+        </div>
+        <div id="ticketValidation" class="notice"></div>
       </section>
 
       <section id="recentPanel" class="section">

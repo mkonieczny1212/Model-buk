@@ -1,4 +1,4 @@
-MODEL BUK 0.8.0
+MODEL BUK 0.9.0
 
 Rozpakuj do NOWEGO folderu. Python 3.12.
 Uruchom URUCHOM_MODEL_BUK.bat; port 8010.

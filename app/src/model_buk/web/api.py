@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from model_buk.web.service import PredictionService, ServicePaths
 from model_buk.web.service_v062 import MatchAnalysisService
 from model_buk.web.storage import PredictionStore
 from model_buk.security import safe_error
+from model_buk.settlement import MaintenanceWorker, SettlementEngine, validation_report
 
 
 class CornerPredictionRequest(BaseModel):
@@ -68,6 +71,7 @@ def create_app(
     store: PredictionStore | Any | None = None,
     static_dir: str | Path | None = None,
 ) -> FastAPI:
+    production_startup = service is None and analysis_service is None
     legacy_service = service or _default_service()
     # Existing tests can inject only the legacy service. New production startup
     # creates the v0.6 analysis orchestrator automatically.
@@ -75,11 +79,35 @@ def create_app(
         analysis_service = _default_analysis_service()
     store = store or PredictionStore(os.getenv("MODEL_BUK_DB", "runtime/model_buk.sqlite3"))
     static_path = Path(static_dir or Path(__file__).with_name("static"))
+    settlement_engine = None
+    if analysis_service is not None and getattr(analysis_service, "provider", None) is not None:
+        settlement_engine = SettlementEngine(store, analysis_service.provider)
+    maintenance_worker = (
+        MaintenanceWorker(
+            settlement_engine,
+            interval_seconds=int(os.getenv("MODEL_BUK_MAINTENANCE_INTERVAL", "900")),
+        )
+        if settlement_engine is not None
+        and production_startup
+        and os.getenv("MODEL_BUK_AUTO_MAINTENANCE", "1") == "1"
+        else None
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        if maintenance_worker is not None:
+            maintenance_worker.start()
+        try:
+            yield
+        finally:
+            if maintenance_worker is not None:
+                maintenance_worker.stop()
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.8.0",
+        version="0.9.0",
         description="Multi-league, multi-market football probability + current-context research engine.",
+        lifespan=lifespan,
     )
 
     @app.get("/api/health")
@@ -172,7 +200,7 @@ def create_app(
     @app.post("/api/scan")
     def scan(request: ScanRequest) -> dict[str, Any]:
         if analysis_service is None:
-            raise HTTPException(status_code=503, detail="v0.8 scan service unavailable")
+            raise HTTPException(status_code=503, detail="v0.9 scan service unavailable")
         if request.league_codes is not None and not any(request.league_codes):
             raise HTTPException(status_code=422, detail="Wybierz co najmniej jedną ligę.")
         try:
@@ -195,6 +223,51 @@ def create_app(
     @app.get("/api/scans")
     def scans(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
         return {"scans": store.recent_scans(limit)}
+
+    @app.post("/api/maintenance/capture-closing")
+    def capture_closing(horizon_minutes: int = Query(default=180, ge=15, le=720)) -> dict[str, Any]:
+        if settlement_engine is None:
+            raise HTTPException(status_code=503, detail="Live settlement provider unavailable")
+        try:
+            return settlement_engine.capture_closing_odds(horizon_minutes=horizon_minutes)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+
+    @app.post("/api/maintenance/reconcile")
+    def reconcile(limit: int = Query(default=100, ge=1, le=1000)) -> dict[str, Any]:
+        if settlement_engine is None:
+            raise HTTPException(status_code=503, detail="Live settlement provider unavailable")
+        try:
+            return settlement_engine.reconcile(limit=limit)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+
+    @app.post("/api/maintenance/run")
+    def maintenance_run() -> dict[str, Any]:
+        if settlement_engine is None:
+            raise HTTPException(status_code=503, detail="Live settlement provider unavailable")
+        try:
+            if maintenance_worker is not None:
+                return maintenance_worker.run_once()
+            return {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "captured": settlement_engine.capture_closing_odds(),
+                "settled": settlement_engine.reconcile(),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=safe_error(exc)) from exc
+
+    @app.get("/api/maintenance/status")
+    def maintenance_status() -> dict[str, Any]:
+        return {
+            "automatic": maintenance_worker is not None,
+            "interval_seconds": maintenance_worker.interval_seconds if maintenance_worker else None,
+            "last_result": maintenance_worker.last_result if maintenance_worker else None,
+        }
+
+    @app.get("/api/validation/report")
+    def report(min_sample: int = Query(default=200, ge=30, le=5000)) -> dict[str, Any]:
+        return validation_report(store, min_sample=min_sample)
 
     # Legacy v0.4 corner endpoint remains available for reproducibility.
     @app.post("/api/predict/corners")
