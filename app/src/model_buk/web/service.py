@@ -141,7 +141,7 @@ class MatchAnalysisService:
         latest = max((x["history_through"] for x in leagues if x["history_through"]), default=None)
         return {
             "status": "ok" if (self.provider.connected or not self.multimarket.history.empty) and not self.model_loading_errors else "degraded",
-            "app_version": "0.9.0",
+            "app_version": "0.9.1",
             "deployment_status": "research / paper betting",
             "live_provider": self.provider.status(),
             "leagues": len(leagues),
@@ -189,9 +189,30 @@ class MatchAnalysisService:
                 "message": "Podłącz API-Football, aby aplikacja sama pobierała bieżące mecze. Analiza ręczna wielu lig działa bez API.",
                 "provider": self.provider.status(),
             }
+        try:
+            fixtures = self.provider.fixtures(date, league_codes)
+        except Exception as exc:
+            return {
+                "mode": "degraded",
+                "fixtures": [],
+                "message": f"Dostawca live nie udostępnił terminarza: {safe_error(exc)} Analiza ręczna nadal działa na lokalnej historii.",
+                "provider": self.provider.status(),
+            }
+        diagnostics = self.provider.fixture_diagnostics() if hasattr(self.provider, "fixture_diagnostics") else None
+        message = None
+        if not fixtures and diagnostics:
+            provider_count = diagnostics.get("provider_fixture_count", 0)
+            message = (
+                f"Dostawca zwrócił {provider_count} meczów dla tego dnia, ale 0 w wybranych obsługiwanych ligach. "
+                "Wybierz poprzedni lub następny dzień albo użyj analizy ręcznej."
+                if provider_count
+                else "Dostawca nie zwrócił meczów dla wybranego dnia. Wybierz sąsiednią datę lub użyj analizy ręcznej."
+            )
         return {
             "mode": "live",
-            "fixtures": self.provider.fixtures(date, league_codes),
+            "fixtures": fixtures,
+            "message": message,
+            "diagnostics": diagnostics,
             "provider": self.provider.status(),
         }
 
@@ -516,7 +537,7 @@ class MatchAnalysisService:
                 "decision": strategy_candidates[0]["strategy_decision"],
                 "bet_count": len(opportunities),
                 "paper_count": len(strategy_candidates),
-                "reason": "Najlepsza propozycja przeszła profil wartości 1,50–1,90. Pozostaje PAPER do walidacji prospektywnej.",
+                "reason": "Najlepsza propozycja przeszła profil wartości 1,30–2,00. Pozostaje PAPER do walidacji prospektywnej.",
             }
         else:
             analysis["top_candidates"] = [by_key.get(r["market_key"], r) for r in candidates]

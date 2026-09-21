@@ -105,7 +105,7 @@ def create_app(
 
     app = FastAPI(
         title="Model Buk API",
-        version="0.9.0",
+        version="0.9.1",
         description="Multi-league, multi-market football probability + current-context research engine.",
         lifespan=lifespan,
     )

@@ -80,13 +80,13 @@ async function loadManualTeams() {
 function renderFixtures(data){
   const list=$('fixturesList'); const notice=$('liveNotice');
   if(data.mode!=='live'){
-    notice.classList.remove('hidden'); notice.innerHTML=`<b>Live data nie jest jeszcze podłączone.</b> ${esc(data.message||'')} Możesz już analizować mecze ręcznie poniżej.`;
-    list.innerHTML='<div class="empty-state">Po podłączeniu API-Football tutaj pojawią się automatycznie mecze z wybranego dnia i lig.</div>';
+    notice.classList.remove('hidden'); notice.innerHTML=`<b>Dane live są chwilowo ograniczone.</b> ${esc(data.message||'')} Możesz analizować mecze ręcznie poniżej.`;
+    list.innerHTML='<div class="empty-state">Terminarz live jest niedostępny. Analiza ręczna korzysta z lokalnej historii.</div>';
     return;
   }
   notice.classList.add('hidden');
   const rows=data.fixtures||[];
-  if(!rows.length){list.innerHTML='<div class="empty-state">Brak meczów dla wybranych lig i dnia.</div>';return;}
+  if(!rows.length){notice.classList.remove('hidden');notice.innerHTML=`<b>Terminarz został pobrany.</b> ${esc(data.message||'Brak meczów dla wybranych lig i dnia.')}`;list.innerHTML='<div class="empty-state">0 meczów w wybranych ligach. Sprawdź sąsiednią datę.</div>';return;}
   list.innerHTML=rows.map(f=>{const future=new Date(f.kickoff).getTime()>Date.now()&&['NS','TBD','PST'].includes(String(f.status||'').toUpperCase());return `<button class="fixture-card" data-id="${f.fixture_id}" ${future?'':'disabled'}>
     <div class="fixture-top"><span>${esc(f.league_name||f.league_code)}</span><span>${esc(localDate(f.kickoff))}</span></div>
     <div class="team-row"><img src="${esc(f.home.logo||'')}" alt=""><b>${esc(f.home.name)}</b></div>
@@ -142,7 +142,7 @@ function renderScan(data){
     <div class="scan-price">${(t.legs||[]).map(l=>odd(l.odds)).join(' × ')} = <b>${odd(t.odds)}</b> <small>${esc(t.bookmaker||'—')}</small></div>
     <div class="scan-metrics"><span>P konserw. <b>${pct(t.conservative_probability)}</b></span><span>Edge <b>${pp(t.conservative_edge)}</b></span><span>EV netto <b>${pct(t.conservative_net_ev)}</b></span></div>
     <small class="muted">Prawdopodobieństwo łączne jest iloczynem nóg z różnych meczów. Ta metoda pozostaje PAPER do osobnej walidacji zależności; podatek jest liczony raz.</small>
-  </div>`).join(''):`<div class="empty-state compact">${noFixtures?'Brak meczów do analizy dla wybranego dnia i lig.':'Brak par o łącznym kursie 1,50–1,90 i EV netto co najmniej 5%.'}</div>`;
+  </div>`).join(''):`<div class="empty-state compact">${noFixtures?'Brak meczów do analizy dla wybranego dnia i lig.':'Brak par o łącznym kursie 1,30–2,00 i EV netto co najmniej 5%.'}</div>`;
   const errors=data.errors||[]; const notice=$('scanNotice');
   if(errors.length){
     notice.classList.remove('hidden');
@@ -151,7 +151,7 @@ function renderScan(data){
     notice.classList.remove('hidden');
     notice.innerHTML=`<b>Snapshot PAPER #${esc(data.scan_id||'—')}</b> · ${esc(localDate(data.generated_at))} · profil ${esc(data.strategy_version||'—')}`;
   }
-  const reasonLabels={target_odds:'kurs singla poza 1,50–1,90',stale_odds:'nieaktualny kurs',data_quality:'za małe pokrycie danych',edge:'edge poniżej 3 p.p.',net_ev:'EV netto poniżej 5%',settlement:'niezgodne zasady rozliczenia',devig:'brak pełnego rynku do de-vig',invalid_interval:'nieprawidłowa niepewność',uncertainty:'brak zwalidowanego przedziału niepewności',validation:'brak walidacji predykcyjnej',fixture_rank_limit:'niższy ranking w tym meczu',missing_probability:'brak prawdopodobieństwa',not_prospective:'mecz nie jest przyszły'};
+  const reasonLabels={target_odds:'kurs singla poza 1,30–2,00',stale_odds:'nieaktualny kurs',data_quality:'za małe pokrycie danych',edge:'edge poniżej 3 p.p.',net_ev:'EV netto poniżej 5%',settlement:'niezgodne zasady rozliczenia',devig:'brak pełnego rynku do de-vig',invalid_interval:'nieprawidłowa niepewność',uncertainty:'brak zwalidowanego przedziału niepewności',validation:'brak walidacji predykcyjnej',fixture_rank_limit:'niższy ranking w tym meczu',missing_probability:'brak prawdopodobieństwa',not_prospective:'mecz nie jest przyszły'};
   const rejected=data.rejected||[]; $('scanRejectedPanel').classList.toggle('hidden',!rejected.length);
   $('scanRejected').innerHTML=rejected.map(r=>`<div class="rejected-row"><span>${esc(r.home_team)} — ${esc(r.away_team)}</span><b>${esc(r.label||r.market_key)} @ ${odd(r.odds)}</b><small>${(r.reason_codes||[]).map(x=>esc(reasonLabels[x]||x)).join(' · ')}</small></div>`).join('');
 }

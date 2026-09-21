@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Model BUK v0.9.0 Server - PORT 8010 - NIE ZAMYKAJ
+title Model BUK v0.9.1 Server - PORT 8010 - NIE ZAMYKAJ
 
 echo ================================================
-echo          MODEL BUK v0.9.0 - START APLIKACJI
+echo          MODEL BUK v0.9.1 - START APLIKACJI
 echo ================================================
 echo.
 
@@ -66,7 +66,7 @@ echo Serwer bedzie dzialal w TYM oknie. Nie zamykaj go podczas korzystania z apl
 echo.
 echo [6/6] Przegladarka otworzy sie automatycznie za kilka sekund...
 set "MODEL_BUK_PORT=8010"
-start "" /b .venv\Scripts\python.exe -c "import time,webbrowser; time.sleep(4); webbrowser.open('http://127.0.0.1:8010/?v=090')"
+start "" /b .venv\Scripts\python.exe -c "import time,webbrowser; time.sleep(4); webbrowser.open('http://127.0.0.1:8010/?v=091')"
 
 ".venv\Scripts\python.exe" -m model_buk.web.api
 if errorlevel 1 goto :error

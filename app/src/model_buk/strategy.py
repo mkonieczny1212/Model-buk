@@ -10,10 +10,10 @@ from typing import Any, Iterable
 class StrategyProfile:
     """Frozen selection policy applied after the PURE probability model."""
 
-    name: str = "pl_value_150_190_v1"
+    name: str = "pl_value_130_200_v2"
     mode: str = "PAPER"
-    min_odds: float = 1.50
-    max_odds: float = 1.90
+    min_odds: float = 1.30
+    max_odds: float = 2.00
     preferred_min_odds: float = 1.65
     preferred_max_odds: float = 1.80
     min_conservative_edge: float = 0.03

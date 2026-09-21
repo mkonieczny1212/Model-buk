@@ -2,7 +2,7 @@
 
 ## Aktywny profil
 
-- końcowy kurs rekomendacji: 1,50–1,90;
+- końcowy kurs rekomendacji: 1,30–2,00;
 - preferowany koszyk analityczny: 1,65–1,80;
 - konserwatywny edge: minimum 3 p.p.;
 - konserwatywne EV netto: minimum 5%;
@@ -15,7 +15,7 @@
 - kupony: dwie nogi, różne mecze, ten sam bukmacher;
 - status: PAPER.
 
-Zakres kursu dotyczy całej rekomendacji. Single musi sam mieć kurs 1,50–1,90.
+Zakres kursu dotyczy całej rekomendacji. Single musi sam mieć kurs 1,30–2,00.
 Kupon może łączyć niższe kursy, np. 1,30 × 1,30 = 1,69.
 
 ## Matematyka kuponu

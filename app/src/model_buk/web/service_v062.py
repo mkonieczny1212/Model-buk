@@ -23,7 +23,7 @@ class MatchAnalysisService(BaseMatchAnalysisService):
 
     def status(self) -> dict[str, Any]:
         payload = super().status()
-        payload["app_version"] = "0.9.0"
+        payload["app_version"] = "0.9.1"
         payload["secondary_providers"] = {
             "footystats": self.footystats.status(),
             "sportmonks": self.sportmonks.status(),
@@ -31,15 +31,10 @@ class MatchAnalysisService(BaseMatchAnalysisService):
         return payload
 
     def teams(self, league_code: str) -> list[str]:
-        # A connected current provider is authoritative for the current-season
-        # roster. If that lookup fails, returning [] is safer than reintroducing
-        # relegated/historical clubs into a selector labelled as current.
-        if self.provider.connected:
-            try:
-                return [row["name"] for row in self.provider.teams_for_league(league_code)]
-            except Exception:
-                return []
-        return self.multimarket.teams(league_code)
+        # Manual analysis is explicitly backed by local historical data. When
+        # the current-roster endpoint is outside the provider plan, retain a
+        # usable selector instead of returning a misleading empty list.
+        return super().teams(league_code)
 
     def analyze_fixture(self, fixture_id: int, deep: bool = True) -> dict[str, Any]:
         analysis = super().analyze_fixture(fixture_id, deep=deep)

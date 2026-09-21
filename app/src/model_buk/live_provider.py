@@ -82,6 +82,7 @@ class ApiFootballClient:
         self._last_headers: dict[str, str] = {}
         self._access_error: str | None = None
         self._verified = False
+        self._last_fixture_query: dict[str, Any] | None = None
         self._session = requests.Session()
 
     @property
@@ -143,7 +144,16 @@ class ApiFootballClient:
             code = allowed_ids.get(league_id)
             if code:
                 items.append(self._normalize_fixture(row, code))
+        self._last_fixture_query = {
+            "date": str(target),
+            "provider_fixture_count": len(payload.get("response", [])),
+            "supported_fixture_count": len(items),
+            "selected_league_count": len(allowed_ids),
+        }
         return sorted(items, key=lambda x: x.get("kickoff") or "")
+
+    def fixture_diagnostics(self) -> dict[str, Any] | None:
+        return dict(self._last_fixture_query) if self._last_fixture_query else None
 
     def current_season(self, league_code: str) -> int:
         """Resolve the provider-declared current season for a competition.

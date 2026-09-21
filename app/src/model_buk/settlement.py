@@ -234,7 +234,7 @@ def validation_report(store: Any, *, min_sample: int = 200) -> dict[str, Any]:
         market_groups.setdefault(str(row.get("market_group") or "other"), []).append(row)
         league_groups.setdefault(str(row.get("league_code") or "unknown"), []).append(row)
         odds = float(row["odds"])
-        bucket = "1.50-1.64" if odds < 1.65 else "1.65-1.80" if odds <= 1.80 else "1.81-1.90"
+        bucket = "1.30-1.49" if odds < 1.50 else "1.50-1.69" if odds < 1.70 else "1.70-1.84" if odds < 1.85 else "1.85-2.00"
         odds_groups.setdefault(bucket, []).append(row)
     gates = {
         "sample": overall.get("count", 0) >= min_sample,

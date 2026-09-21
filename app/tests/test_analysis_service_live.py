@@ -47,3 +47,38 @@ def test_live_analysis_uses_current_observations_and_odds(tmp_path: Path):
     assert result["confidence"]["calibrated"] is False
     assert result["confidence"]["score"] == result["data_quality"]["score"]
 
+
+def test_empty_supported_schedule_explains_provider_result(tmp_path: Path):
+    class EmptyDayProvider(FakeProvider):
+        def fixture_diagnostics(self):
+            return {"provider_fixture_count": 146, "supported_fixture_count": 0, "selected_league_count": 13}
+
+    paths = ServicePaths(
+        history=Path("does-not-exist.csv"),
+        model_root=tmp_path / "models-none",
+        config=Path("config/corners_v02.toml"),
+        multileague_history=Path("data/multileague/europe16_matches_v05.csv.gz"),
+        stadiums=Path("does-not-exist.json"),
+    )
+    result = MatchAnalysisService(paths=paths, provider=EmptyDayProvider()).fixtures("2026-09-21", ["EPL"])
+    assert result["fixtures"] == []
+    assert result["diagnostics"]["provider_fixture_count"] == 146
+    assert "0 w wybranych" in result["message"]
+
+
+def test_schedule_provider_error_keeps_manual_mode_available(tmp_path: Path):
+    class FailingProvider(FakeProvider):
+        def fixtures(self, date, league_codes=None):
+            raise RuntimeError("upstream secret")
+
+    paths = ServicePaths(
+        history=Path("does-not-exist.csv"),
+        model_root=tmp_path / "models-none",
+        config=Path("config/corners_v02.toml"),
+        multileague_history=Path("data/multileague/europe16_matches_v05.csv.gz"),
+        stadiums=Path("does-not-exist.json"),
+    )
+    result = MatchAnalysisService(paths=paths, provider=FailingProvider()).fixtures("2026-09-21", ["EPL"])
+    assert result["mode"] == "degraded"
+    assert "upstream secret" not in result["message"]
+

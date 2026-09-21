@@ -60,14 +60,21 @@ def analysis(
     }
 
 
-@pytest.mark.parametrize("odds", [1.50, 1.90])
+@pytest.mark.parametrize("odds", [1.30, 2.00])
 def test_single_target_odds_boundaries_are_inclusive(odds: float) -> None:
-    p = 0.90
+    p = 0.95
     rows = select_singles(
         [analysis(1, odds=odds, probability=p, conservative=p, market_probability=0.70)]
     )
     assert len(rows) == 1
     assert rows[0]["strategy_decision"] == "PAPER"
+
+
+@pytest.mark.parametrize("odds", [1.29, 2.01])
+def test_single_outside_new_target_odds_is_rejected(odds: float) -> None:
+    assert select_singles(
+        [analysis(1, odds=odds, probability=.90, conservative=.89, market_probability=.60)]
+    ) == []
 
 
 def test_only_best_single_from_fixture_is_kept() -> None:

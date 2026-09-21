@@ -1,8 +1,8 @@
-# Model BUK 0.9.0
+# Model BUK 0.9.1
 
 Wersja 0.9 zamyka pętlę badawczą: przechwytuje kurs zamknięcia, automatycznie rozlicza zapisane single i nogi kuponów, liczy CLV, ROI, Brier i ECE oraz utrzymuje model w trybie PAPER do przejścia jawnej bramy walidacyjnej. Szczegóły: `docs/V09_WALIDACJA_I_ROZLICZENIA.md`.
 
-Wersja 0.8 dodaje skaner strategii PAPER dla końcowych kursów 1,50–1,90.
+Skaner strategii PAPER ocenia końcowe kursy 1,30–2,00.
 Obsługuje single oraz kupony dwuzdarzeniowe z różnych meczów, także pary
 1,30 × 1,30 = 1,69. Każda noga musi mieć dodatni konserwatywny edge i EV
 przed podatkiem, a cały kupon minimum 5% konserwatywnego EV netto. Polski

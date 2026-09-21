@@ -3,6 +3,7 @@ from pathlib import Path
 from model_buk.goal_engine_v06 import DynamicGoalEngineV06
 from model_buk.team_names import resolve_team_name
 from model_buk.web.service import MatchAnalysisService, ServicePaths
+from model_buk.web.service_v062 import MatchAnalysisService as DecoratedMatchAnalysisService
 
 
 def test_cross_provider_athletic_bilbao_resolves_to_understat():
@@ -45,6 +46,26 @@ def test_team_selector_prefers_current_provider_roster(tmp_path: Path):
     )
     service = MatchAnalysisService(paths=paths, provider=CurrentRosterProvider())
     assert service.teams("EKSTRAKLASA") == ["Lech Poznan", "Legia Warszawa"]
+
+
+def test_decorated_service_falls_back_to_historical_teams_when_roster_plan_fails(tmp_path: Path):
+    class RestrictedProvider(CurrentRosterProvider):
+        def teams_for_league(self, league_code):
+            raise RuntimeError("plan")
+
+    paths = ServicePaths(
+        history=Path("does-not-exist.csv"),
+        model_root=tmp_path / "models-none",
+        config=Path("config/corners_v02.toml"),
+        multileague_history=Path("data/multileague/europe16_matches_v05.csv.gz"),
+        stadiums=Path("does-not-exist.json"),
+        understat=Path("does-not-exist-understat"),
+        goal_model=Path("does-not-exist-goals"),
+    )
+    service = DecoratedMatchAnalysisService(paths=paths, provider=RestrictedProvider())
+    teams = service.teams("LALIGA")
+    assert "Barcelona" in teams
+    assert len(teams) > 2
 
 
 def test_model_only_shortlist_is_not_blank_without_odds():
